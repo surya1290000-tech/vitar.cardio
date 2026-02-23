@@ -1,0 +1,609 @@
+
+> vitar@0.1.0 dev
+> next dev
+
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 4.2s
+ ○ Compiling /login ...
+ ✓ Compiled /login in 6s (528 modules)
+ GET /login 200 in 6760ms
+ ✓ Compiled in 1052ms (270 modules)
+ ○ Compiling /forgot-password ...
+ ✓ Compiled /forgot-password in 980ms (520 modules)
+ GET /forgot-password 200 in 1320ms
+ ○ Compiling /reset-password ...
+ ✓ Compiled /reset-password in 792ms (526 modules)
+ GET /reset-password 200 in 950ms
+ ✓ Compiled in 769ms (274 modules)
+ ✓ Compiled in 163ms (274 modules)
+ ✓ Compiled in 517ms (274 modules)
+ ✓ Compiled in 396ms (260 modules)
+ ✓ Compiled in 315ms (260 modules)
+ ✓ Compiled in 403ms (260 modules)
+ ✓ Compiled in 1370ms (274 modules)
+ ✓ Compiled in 227ms (274 modules)
+ ✓ Compiled in 341ms (274 modules)
+ ✓ Compiled in 283ms (274 modules)
+ ✓ Compiled in 494ms (274 modules)
+ ✓ Compiled in 426ms (274 modules)
+ ✓ Compiled in 481ms (274 modules)
+ ✓ Compiled in 311ms (274 modules)
+ ✓ Compiled in 306ms (274 modules)
+ ✓ Compiled in 451ms (274 modules)
+ ✓ Compiled in 294ms (274 modules)
+ ✓ Compiled in 258ms (274 modules)
+ ✓ Compiled in 247ms (274 modules)
+ ✓ Compiled in 259ms (274 modules)
+ ✓ Compiled in 1397ms (274 modules)
+ ✓ Compiled in 175ms (274 modules)
+ ✓ Compiled in 217ms (274 modules)
+ ✓ Compiled in 1196ms (274 modules)
+ ✓ Compiled in 376ms (274 modules)
+ ✓ Compiled in 250ms (274 modules)
+ ✓ Compiled in 398ms (274 modules)
+ ✓ Compiled in 193ms (274 modules)
+ ✓ Compiled in 199ms (274 modules)
+ ✓ Compiled in 273ms (274 modules)
+ ✓ Compiled in 380ms (274 modules)
+ ✓ Compiled in 392ms (260 modules)
+ ✓ Compiled in 612ms (274 modules)
+ ✓ Compiled in 297ms (274 modules)
+ ✓ Compiled in 557ms (274 modules)
+ ✓ Compiled in 270ms (274 modules)
+ ✓ Compiled in 264ms (274 modules)
+ ✓ Compiled in 343ms (274 modules)
+ ✓ Compiled in 314ms (274 modules)
+ ✓ Compiled in 269ms (274 modules)
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 1527ms (491 modules)
+ GET /admin 200 in 1969ms
+ ○ Compiling /api/admin/data ...
+ ✓ Compiled /api/admin/data in 534ms (261 modules)
+ GET /api/admin/data 200 in 2248ms
+ ✓ Compiled in 921ms (505 modules)
+ ✓ Compiled in 763ms (491 modules)
+ ✓ Compiled /_not-found in 269ms (494 modules)
+ GET /admin 200 in 113ms
+ ✓ Compiled in 429ms (276 modules)
+ ✓ Compiled in 272ms (276 modules)
+ ✓ Compiled in 911ms (491 modules)
+ ✓ Compiled /_not-found in 147ms (494 modules)
+ GET /admin 200 in 122ms
+ ✓ Compiled in 507ms (494 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 1716ms (718 modules)
+ GET /admin 200 in 111ms
+ ✓ Compiled in 908ms (718 modules)
+ ✓ Compiled in 271ms (458 modules)
+ ✓ Compiled /_not-found in 143ms (716 modules)
+ GET /admin 200 in 113ms
+ ○ Compiling /api/admin/auth/session ...
+ ✓ Compiled /api/admin/auth/session in 1765ms (837 modules)
+ GET /api/admin/auth/session 200 in 1037ms
+ GET /api/admin/auth/session 200 in 62ms
+ ✓ Compiled in 696ms (837 modules)
+ ✓ Compiled in 571ms (837 modules)
+ ✓ Compiled in 280ms (458 modules)
+ ✓ Compiled in 246ms (458 modules)
+ ✓ Compiled in 276ms (458 modules)
+ ✓ Compiled in 184ms (458 modules)
+ ✓ Compiled in 309ms (458 modules)
+ ✓ Compiled in 281ms (458 modules)
+   Reload env: .env.local
+ ✓ Compiled in 874ms (727 modules)
+   Reload env: .env.local
+ ✓ Compiled in 237ms (713 modules)
+   Reload env: .env.local
+ ✓ Compiled in 231ms (713 modules)
+   Reload env: .env.local
+ ✓ Compiled in 320ms (713 modules)
+   Reload env: .env.local
+ ✓ Compiled in 171ms (713 modules)
+   Reload env: .env.local
+ ✓ Compiled in 167ms (713 modules)
+   Reload env: .env.local
+ ✓ Compiled in 183ms (713 modules)
+ ✓ Compiled in 175ms (713 modules)
+   Reload env: .env.local
+ ✓ Compiled in 178ms (713 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 12.5s (730 modules)
+ GET /admin 404 in 12099ms
+ GET /admin 404 in 184ms
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 9.6s (718 modules)
+ GET /admin 404 in 10906ms
+ GET /admin 404 in 154ms
+ GET /admin 404 in 68ms
+ GET /admin 404 in 79ms
+ GET /admin 404 in 71ms
+ GET /admin 404 in 60ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 56ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 45ms
+ GET /admin 404 in 88ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 57ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 39ms
+ GET /admin 404 in 61ms
+ GET /admin 404 in 44ms
+ GET /admin 404 in 76ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 57ms
+ GET /admin 404 in 39ms
+ GET /admin 404 in 390ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 183ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 55ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 228ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 67ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 60ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 46ms
+ GET /admin 404 in 67ms
+ GET /admin 404 in 62ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 104ms
+ GET /admin 404 in 96ms
+ GET /admin 404 in 134ms
+ GET /admin 404 in 139ms
+ GET /admin 404 in 99ms
+ GET /admin 404 in 94ms
+ GET /admin 404 in 81ms
+ GET /admin 404 in 69ms
+ GET /admin 404 in 118ms
+ GET /admin 404 in 155ms
+ GET /admin 404 in 77ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 66ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 62ms
+ GET /admin 404 in 63ms
+ GET /admin 404 in 107ms
+ GET /admin 404 in 137ms
+ GET /admin 404 in 55ms
+ GET /admin 404 in 43ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 51ms
+ GET /admin 404 in 49ms
+ GET /admin 404 in 58ms
+ GET /admin 404 in 47ms
+ GET /admin 404 in 50ms
+ GET /admin 404 in 49ms
+ GET /admin 404 in 80ms
+ GET /admin 404 in 68ms
+ GET /admin 404 in 70ms
+ GET /admin 404 in 89ms
+ GET /admin 404 in 64ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 45ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 43ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 46ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 46ms
+ GET /admin 404 in 79ms
+ GET /admin 404 in 161ms
+ GET /admin 404 in 45ms
+ GET /admin 404 in 180ms
+ GET /admin 404 in 59ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 42ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 41ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 177ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 50ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 52ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 51ms
+ GET /admin 404 in 44ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 67ms
+ GET /admin 404 in 76ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 47ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 114ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 50ms
+ GET /admin 404 in 700ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 135ms
+ GET /admin 404 in 87ms
+ GET /admin 404 in 85ms
+ GET /admin 404 in 58ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 19ms
+ GET /admin 404 in 45ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 69ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 93ms
+ GET /admin 404 in 55ms
+ GET /admin 404 in 432ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 47ms
+   Reload env: .env.local
+ ✓ Compiled in 11.6s (718 modules)
+ GET /admin 404 in 10426ms
+ GET /admin 404 in 87ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 52ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 52ms
+ GET /admin 404 in 51ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 55ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 95ms
+ GET /admin 404 in 46ms
+ GET /admin 404 in 68ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 67ms
+ GET /admin 404 in 71ms
+ GET /admin 404 in 49ms
+ GET /admin 404 in 51ms
+ GET /admin 404 in 47ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 58ms
+ GET /admin 404 in 63ms
+ GET /admin 404 in 52ms
+ GET /admin 404 in 49ms
+ GET /admin 404 in 49ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 69ms
+ GET /admin 404 in 91ms
+ GET /admin 404 in 56ms
+ GET /admin 404 in 62ms
+ GET /admin 404 in 52ms
+ GET /admin 404 in 54ms
+ GET /admin 404 in 44ms
+ GET /admin 404 in 59ms
+ GET /admin 404 in 44ms
+ GET /admin 404 in 52ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 56ms
+ GET /admin 404 in 50ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 59ms
+ GET /admin 404 in 71ms
+ GET /admin 404 in 52ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 66ms
+ GET /admin 404 in 55ms
+ GET /admin 404 in 50ms
+ GET /admin 404 in 51ms
+ GET /admin 404 in 50ms
+ GET /admin 404 in 98ms
+ GET /admin 404 in 191ms
+ GET /admin 404 in 55ms
+ GET /admin 404 in 66ms
+ GET /admin 404 in 58ms
+ GET /admin 404 in 58ms
+ GET /admin 404 in 46ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 46ms
+ GET /admin 404 in 68ms
+ GET /admin 404 in 59ms
+ GET /admin 404 in 70ms
+ GET /admin 404 in 78ms
+ GET /admin 404 in 93ms
+ GET /admin 404 in 66ms
+ GET /admin 404 in 62ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 57ms
+ GET /admin 404 in 58ms
+ GET /admin 404 in 42ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 86ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 50ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 56ms
+ GET /admin 404 in 62ms
+ GET /admin 404 in 47ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 70ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 41ms
+ GET /admin 404 in 54ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 120ms
+ GET /admin 404 in 102ms
+ GET /admin 404 in 188ms
+ GET /admin 404 in 170ms
+ GET /admin 404 in 402ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 67ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 18ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 18ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 18ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 41ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 41ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 44ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 45ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 107ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 39ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 71ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 17ms
+ GET /admin 404 in 47ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 51ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 53ms
+ GET /admin 404 in 660ms
+ GET /admin 404 in 48ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 35ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 19ms
+ GET /admin 404 in 39ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 19ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 37ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 33ms
+ GET /admin 404 in 17ms
+ GET /admin 404 in 39ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 29ms
+ GET /admin 404 in 16ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 34ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 17ms
+ GET /admin 404 in 26ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 38ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 20ms
+ GET /admin 404 in 36ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 28ms
+ GET /admin 404 in 30ms
+ GET /admin 404 in 25ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 32ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 31ms
+ GET /admin 404 in 23ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 15ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 22ms
+ GET /admin 404 in 40ms
+ GET /admin 404 in 21ms
+ GET /admin 404 in 24ms
+ GET /admin 404 in 27ms
+ GET /admin 404 in 22ms
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 3.3s
