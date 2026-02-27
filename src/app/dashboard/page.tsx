@@ -46,6 +46,22 @@ interface AlertItem {
   resolvedAt: string | null;
 }
 
+interface UserProfile {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  emailNotifications: boolean;
+  role: string;
+  createdAt: string;
+  subscription: {
+    plan: string;
+    status: string;
+    currentPeriodEnd: string;
+  } | null;
+}
+
 export default function DashboardPage() {
   const { user, isAuthenticated, accessToken, setUser } = useAuthStore();
   const { logout } = useLogout();
@@ -72,6 +88,21 @@ export default function DashboardPage() {
   const [pairError, setPairError] = useState('');
   const [alertsInfo, setAlertsInfo] = useState('');
   const [demoMode, setDemoMode] = useState(true);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', phone: '' });
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'cancelled'>('all');
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [notificationSaving, setNotificationSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderPage, setOrderPage] = useState(1);
 
   const [demoDevice, setDemoDevice] = useState<Device>({
     id: 'demo-device',
@@ -98,7 +129,6 @@ export default function DashboardPage() {
 
   const effectiveDevices = useMemo(() => (demoMode && devices.length === 0 ? [demoDevice] : devices), [demoMode, devices, demoDevice]);
   const effectiveReading = useMemo(() => (demoMode && !latestReading ? demoReading : latestReading), [demoMode, latestReading, demoReading]);
-  const recentOrders = useMemo(() => orders.slice(0, 5), [orders]);
   const primaryDevice = useMemo(() => effectiveDevices[0] ?? null, [effectiveDevices]);
   const hasDevice = Boolean(primaryDevice);
   const deviceStatus = primaryDevice?.status ? primaryDevice.status.replace(/_/g, ' ') : 'not connected';
@@ -106,6 +136,31 @@ export default function DashboardPage() {
   const spo2Value = effectiveReading?.spo2 ?? null;
   const riskScorePercent = effectiveReading?.aiRiskScore != null ? Math.round(effectiveReading.aiRiskScore * 100) : null;
   const activeAlerts = useMemo(() => alerts.filter((a) => a.status === 'pending' || a.status === 'acknowledged'), [alerts]);
+  const filteredOrders = useMemo(() => {
+    const normalizedQuery = orderSearch.trim().toLowerCase();
+    return orders.filter((o) => {
+      const statusOk = orderStatusFilter === 'all' || o.status === orderStatusFilter;
+      if (!statusOk) return false;
+      if (!normalizedQuery) return true;
+      return (
+        o.order_number.toLowerCase().includes(normalizedQuery) ||
+        o.device_model.toLowerCase().includes(normalizedQuery) ||
+        o.status.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [orders, orderStatusFilter, orderSearch]);
+  const ordersPageSize = 8;
+  const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / ordersPageSize));
+  const paginatedOrders = useMemo(
+    () => filteredOrders.slice((orderPage - 1) * ordersPageSize, orderPage * ordersPageSize),
+    [filteredOrders, orderPage]
+  );
+  const profileDirty = Boolean(
+    profile &&
+      (profile.firstName !== profileForm.firstName.trim() ||
+        profile.lastName !== profileForm.lastName.trim() ||
+        (profile.phone ?? '') !== profileForm.phone.trim())
+  );
 
   useEffect(() => {
     const stored = window.localStorage.getItem('vitar-demo-mode');
@@ -116,6 +171,14 @@ export default function DashboardPage() {
   useEffect(() => {
     window.localStorage.setItem('vitar-demo-mode', demoMode ? '1' : '0');
   }, [demoMode]);
+
+  useEffect(() => {
+    setOrderPage(1);
+  }, [orderStatusFilter, orderSearch]);
+
+  useEffect(() => {
+    if (orderPage > totalOrderPages) setOrderPage(totalOrderPages);
+  }, [orderPage, totalOrderPages]);
 
   useEffect(() => {
     if (!demoMode || devices.length > 0) return;
@@ -218,6 +281,196 @@ export default function DashboardPage() {
     }
     if (active) setAlerts(Array.isArray(json.alerts) ? json.alerts : []);
   }, []);
+
+  const fetchProfile = useCallback(async (token: string, active = true) => {
+    const res = await fetch('/api/user/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      if (active) setProfileError(json?.error || 'Failed to load profile.');
+      return;
+    }
+
+    if (!active) return;
+    const nextProfile = json?.user as UserProfile;
+    setProfile(nextProfile);
+    setEmailNotifications(Boolean(nextProfile?.emailNotifications));
+    setProfileForm({
+      firstName: nextProfile?.firstName ?? '',
+      lastName: nextProfile?.lastName ?? '',
+      phone: nextProfile?.phone ?? '',
+    });
+  }, []);
+
+  const handleProfileSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileError('');
+    setProfileSuccess('');
+    if (!user) return;
+
+    const nextFirstName = profileForm.firstName.trim();
+    const nextLastName = profileForm.lastName.trim();
+    const nextPhone = profileForm.phone.trim();
+
+    if (!nextFirstName || !nextLastName) {
+      setProfileError('First name and last name are required.');
+      return;
+    }
+
+    setProfileSaving(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setProfileError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
+        return;
+      }
+
+      const res = await fetch('/api/user/me', {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: nextFirstName,
+          lastName: nextLastName,
+          phone: nextPhone || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setProfileError(json?.error || 'Failed to update profile.');
+        showToast({ type: 'error', title: 'Profile Update Failed', message: json?.error || 'Failed to update profile.' });
+        return;
+      }
+
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              firstName: nextFirstName,
+              lastName: nextLastName,
+              phone: nextPhone || null,
+            }
+          : prev
+      );
+      setUser(
+        {
+          id: user.id,
+          email: user.email,
+          firstName: nextFirstName,
+          lastName: nextLastName,
+          role: user.role,
+        },
+        token
+      );
+      setProfileSuccess('Profile updated successfully.');
+      showToast({ type: 'success', title: 'Profile Updated' });
+    } catch {
+      setProfileError('Network error while updating profile.');
+      showToast({ type: 'error', title: 'Profile Update Failed', message: 'Network error while updating profile.' });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleToggleNotifications = async () => {
+    if (notificationSaving) return;
+    const nextValue = !emailNotifications;
+    setNotificationSaving(true);
+    setProfileError('');
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setProfileError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
+        return;
+      }
+
+      const res = await fetch('/api/user/me', {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ emailNotifications: nextValue }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setProfileError(json?.error || 'Failed to update notification settings.');
+        showToast({ type: 'error', title: 'Settings Update Failed', message: json?.error || 'Failed to update notification settings.' });
+        return;
+      }
+
+      setEmailNotifications(nextValue);
+      setProfile((prev) => (prev ? { ...prev, emailNotifications: nextValue } : prev));
+      showToast({ type: 'success', title: 'Settings Updated' });
+    } catch {
+      setProfileError('Network error while updating notification settings.');
+      showToast({ type: 'error', title: 'Settings Update Failed', message: 'Network error while updating notification settings.' });
+    } finally {
+      setNotificationSaving(false);
+    }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    const currentPassword = passwordForm.currentPassword;
+    const newPassword = passwordForm.newPassword;
+    const confirmPassword = passwordForm.confirmPassword;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('All password fields are required.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setPasswordError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
+        return;
+      }
+
+      const res = await fetch('/api/user/change-password', {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPasswordError(json?.error || 'Failed to change password.');
+        showToast({ type: 'error', title: 'Password Change Failed', message: json?.error || 'Failed to change password.' });
+        return;
+      }
+
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordSuccess('Password changed successfully.');
+      showToast({ type: 'success', title: 'Password Updated' });
+    } catch {
+      setPasswordError('Network error while changing password.');
+      showToast({ type: 'error', title: 'Password Change Failed', message: 'Network error while changing password.' });
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
 
   const triggerTestAlert = async () => {
     setAlertsInfo('');
@@ -411,9 +664,11 @@ export default function DashboardPage() {
       setOrdersLoading(true);
       setHealthLoading(true);
       setAlertsLoading(true);
+      setProfileLoading(true);
       setOrdersError('');
       setHealthError('');
       setAlertsError('');
+      setProfileError('');
 
       try {
         const token = await getAccessToken();
@@ -421,22 +676,25 @@ export default function DashboardPage() {
           if (active) {
             setOrdersError('Session expired. Please sign in again.');
             setHealthError('Session expired. Please sign in again.');
+            setProfileError('Session expired. Please sign in again.');
           }
           return;
         }
 
-        await Promise.all([fetchOrders(token, active), fetchHealthData(token, active), fetchAlerts(token, active)]);
+        await Promise.all([fetchOrders(token, active), fetchHealthData(token, active), fetchAlerts(token, active), fetchProfile(token, active)]);
       } catch {
         if (active) {
           setOrdersError('Network error while loading orders.');
           setHealthError('Network error while loading health data.');
           setAlertsError('Network error while loading alerts.');
+          setProfileError('Network error while loading profile.');
         }
       } finally {
         if (active) {
           setOrdersLoading(false);
           setHealthLoading(false);
           setAlertsLoading(false);
+          setProfileLoading(false);
         }
       }
     };
@@ -445,7 +703,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [isAuthenticated, user, getAccessToken, fetchOrders, fetchHealthData, fetchAlerts]);
+  }, [isAuthenticated, user, getAccessToken, fetchOrders, fetchHealthData, fetchAlerts, fetchProfile]);
 
   if (!user) return null;
 
@@ -996,29 +1254,215 @@ export default function DashboardPage() {
         <div
           style={{
             marginTop: '2rem',
-            background: 'var(--graphite)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-            padding: '1.5rem',
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)',
+            gap: '1rem',
           }}
         >
-          <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
-            Account Details
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            {[
-              { label: 'Name', value: `${user.firstName} ${user.lastName}` },
-              { label: 'Email', value: user.email },
-              { label: 'Account Type', value: user.role.charAt(0).toUpperCase() + user.role.slice(1) },
-              { label: 'Subscription', value: 'No active plan' },
-            ].map((item, i) => (
-              <div key={i}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  {item.label}
-                </div>
-                <div style={{ fontSize: '0.9rem' }}>{item.value}</div>
+          <div
+            style={{
+              background: 'var(--graphite)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              padding: '1.5rem',
+            }}
+          >
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+              Profile
+            </div>
+
+            {profileLoading ? (
+              <div className="skeleton-stack">
+                <div className="skeleton-line long" />
+                <div className="skeleton-line mid" />
+                <div className="skeleton-line mid" />
               </div>
-            ))}
+            ) : (
+              <form onSubmit={handleProfileSave} style={{ display: 'grid', gap: '0.9rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>First Name</label>
+                    <input
+                      className="f-inp"
+                      value={profileForm.firstName}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, firstName: e.target.value }))}
+                      style={{ marginTop: '0.35rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Last Name</label>
+                    <input
+                      className="f-inp"
+                      value={profileForm.lastName}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, lastName: e.target.value }))}
+                      style={{ marginTop: '0.35rem' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Phone</label>
+                    <input
+                      className="f-inp"
+                      placeholder="+91 98765 43210"
+                      value={profileForm.phone}
+                      onChange={(e) => setProfileForm((prev) => ({ ...prev, phone: e.target.value }))}
+                      style={{ marginTop: '0.35rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Email</label>
+                    <input className="f-inp" value={profile?.email ?? user.email} disabled style={{ marginTop: '0.35rem', opacity: 0.8 }} />
+                  </div>
+                </div>
+
+                {profileError && <div style={{ color: '#E74C3C', fontSize: '0.82rem' }}>{profileError}</div>}
+                {profileSuccess && <div style={{ color: '#2ECC71', fontSize: '0.82rem' }}>{profileSuccess}</div>}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                    {profile?.createdAt ? `Member since ${new Date(profile.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}` : 'Member'}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={profileSaving || !profileDirty}
+                    style={{
+                      background: '#C0392B',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.78rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      padding: '0.6rem 1rem',
+                      cursor: profileSaving || !profileDirty ? 'not-allowed' : 'pointer',
+                      opacity: profileSaving || !profileDirty ? 0.7 : 1,
+                    }}
+                  >
+                    {profileSaving ? 'Saving...' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          <div
+            style={{
+              background: 'var(--graphite)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              padding: '1.5rem',
+            }}
+          >
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+              Account Settings
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.9rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.84rem' }}>Email Notifications</div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>Order and health alert emails</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleNotifications}
+                  disabled={notificationSaving}
+                  style={{
+                    background: emailNotifications ? 'rgba(46,204,113,0.15)' : 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${emailNotifications ? 'rgba(46,204,113,0.35)' : 'rgba(255,255,255,0.12)'}`,
+                    borderRadius: '20px',
+                    color: emailNotifications ? '#2ECC71' : 'var(--muted)',
+                    fontSize: '0.7rem',
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    padding: '0.35rem 0.75rem',
+                    cursor: notificationSaving ? 'not-allowed' : 'pointer',
+                    opacity: notificationSaving ? 0.7 : 1,
+                  }}
+                >
+                  {notificationSaving ? 'Saving...' : emailNotifications ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.9rem', display: 'grid', gap: '0.6rem' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>Security</div>
+                <form onSubmit={handlePasswordChange} style={{ display: 'grid', gap: '0.55rem' }}>
+                  <input
+                    className="f-inp"
+                    type="password"
+                    placeholder="Current password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                  />
+                  <input
+                    className="f-inp"
+                    type="password"
+                    placeholder="New password (min 8 chars)"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
+                  />
+                  <input
+                    className="f-inp"
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                  />
+                  {passwordError && <div style={{ color: '#E74C3C', fontSize: '0.78rem' }}>{passwordError}</div>}
+                  {passwordSuccess && <div style={{ color: '#2ECC71', fontSize: '0.78rem' }}>{passwordSuccess}</div>}
+                  <button
+                    type="submit"
+                    disabled={passwordSaving}
+                    style={{
+                      background: 'rgba(192,57,43,0.1)',
+                      border: '1px solid rgba(192,57,43,0.28)',
+                      borderRadius: '4px',
+                      color: '#C0392B',
+                      fontSize: '0.74rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      padding: '0.48rem 0.7rem',
+                      width: 'fit-content',
+                      cursor: passwordSaving ? 'not-allowed' : 'pointer',
+                      opacity: passwordSaving ? 0.7 : 1,
+                    }}
+                  >
+                    {passwordSaving ? 'Updating...' : 'Change password'}
+                  </button>
+                </form>
+                <button
+                  onClick={logout}
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '4px',
+                    color: 'var(--white)',
+                    fontSize: '0.78rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    padding: '0.55rem 0.8rem',
+                    width: 'fit-content',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.9rem', display: 'grid', gap: '0.45rem' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>Plan</div>
+                <div style={{ fontSize: '0.9rem' }}>
+                  {profile?.subscription ? `${profile.subscription.plan} (${profile.subscription.status})` : 'No active subscription'}
+                </div>
+                {profile?.subscription?.currentPeriodEnd && (
+                  <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
+                    Renews on {new Date(profile.subscription.currentPeriodEnd).toLocaleDateString('en-IN')}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1038,19 +1482,46 @@ export default function DashboardPage() {
               alignItems: 'center',
               gap: '1rem',
               marginBottom: '1rem',
+              flexWrap: 'wrap',
             }}
           >
             <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              Recent Orders
+              Order History
             </div>
-            <Link href="/#pricing" style={{ color: '#C0392B', textDecoration: 'none', fontSize: '0.78rem' }}>
-              New order
-            </Link>
+            <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+              <input
+                className="f-inp"
+                placeholder="Search order #, model, status"
+                value={orderSearch}
+                onChange={(e) => setOrderSearch(e.target.value)}
+                style={{ minWidth: '220px', padding: '0.45rem 0.7rem', fontSize: '0.8rem' }}
+              />
+              <select
+                value={orderStatusFilter}
+                onChange={(e) => setOrderStatusFilter(e.target.value as 'all' | 'pending' | 'confirmed' | 'cancelled')}
+                style={{
+                  background: 'var(--deep)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '4px',
+                  color: 'var(--white)',
+                  fontSize: '0.8rem',
+                  padding: '0.45rem 0.7rem',
+                }}
+              >
+                <option value="all">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <Link href="/#pricing" style={{ color: '#C0392B', textDecoration: 'none', fontSize: '0.78rem' }}>
+                New order
+              </Link>
+            </div>
           </div>
 
           {ordersLoading && (
             <div className="skeleton-stack" style={{ marginTop: '0.6rem' }}>
-              {Array.from({ length: 3 }).map((_, index) => (
+              {Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="skeleton-row">
                   <div className="skeleton-line long" />
                   <div className="skeleton-line mid" />
@@ -1077,11 +1548,13 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {!ordersLoading && !ordersError && recentOrders.length === 0 && (
-            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No orders yet. Reserve your first device.</p>
+          {!ordersLoading && !ordersError && filteredOrders.length === 0 && (
+            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+              {orders.length === 0 ? 'No orders yet. Reserve your first device.' : 'No orders match this status filter.'}
+            </p>
           )}
 
-          {!ordersLoading && !ordersError && recentOrders.length > 0 && (
+          {!ordersLoading && !ordersError && filteredOrders.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
               <table className="data-table table-card" style={{ fontSize: '0.85rem' }}>
                 <thead>
@@ -1105,7 +1578,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentOrders.map((o) => (
+                  {paginatedOrders.map((o) => (
                     <tr key={o.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                       <td data-label={orderColumns[0]} style={{ padding: '0.9rem 0.2rem', fontFamily: 'monospace', color: '#C0392B', fontSize: '0.78rem' }}>
                         {o.order_number}
@@ -1135,6 +1608,53 @@ export default function DashboardPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {!ordersLoading && !ordersError && filteredOrders.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.8rem', gap: '0.8rem', flexWrap: 'wrap' }}>
+              <div style={{ color: 'var(--muted)', fontSize: '0.76rem' }}>
+                Showing {(orderPage - 1) * ordersPageSize + 1}-{Math.min(orderPage * ordersPageSize, filteredOrders.length)} of {filteredOrders.length}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  disabled={orderPage <= 1}
+                  onClick={() => setOrderPage((prev) => Math.max(1, prev - 1))}
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '4px',
+                    color: 'var(--white)',
+                    fontSize: '0.74rem',
+                    padding: '0.4rem 0.65rem',
+                    cursor: orderPage <= 1 ? 'not-allowed' : 'pointer',
+                    opacity: orderPage <= 1 ? 0.65 : 1,
+                  }}
+                >
+                  Prev
+                </button>
+                <span style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>
+                  Page {orderPage} / {totalOrderPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={orderPage >= totalOrderPages}
+                  onClick={() => setOrderPage((prev) => Math.min(totalOrderPages, prev + 1))}
+                  style={{
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '4px',
+                    color: 'var(--white)',
+                    fontSize: '0.74rem',
+                    padding: '0.4rem 0.65rem',
+                    cursor: orderPage >= totalOrderPages ? 'not-allowed' : 'pointer',
+                    opacity: orderPage >= totalOrderPages ? 0.65 : 1,
+                  }}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

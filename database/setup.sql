@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   oauth_id            VARCHAR(255),
   avatar_url          TEXT,
   stripe_customer_id  VARCHAR(255) UNIQUE,
+  email_notifications BOOLEAN NOT NULL DEFAULT true,
   created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -208,6 +209,10 @@ CREATE TABLE IF NOT EXISTS stripe_webhook_events (
   created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_created_at ON stripe_webhook_events(created_at DESC);
+
+-- SAFETY UPDATES FOR EXISTING DATABASES
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email_notifications BOOLEAN NOT NULL DEFAULT true;
 
 -- ================================================================
 -- ALL TABLES CREATED SUCCESSFULLY
