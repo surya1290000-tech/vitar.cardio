@@ -3,13 +3,18 @@
 import { useEffect, useState } from 'react';
 
 type ThemeMode = 'dark' | 'light';
+type Placement = 'fixed' | 'inline';
 
 function applyTheme(mode: ThemeMode) {
   document.documentElement.setAttribute('data-theme', mode);
   localStorage.setItem('vitar-theme', mode);
 }
 
-export default function ThemeToggle() {
+interface ThemeToggleProps {
+  placement?: Placement;
+}
+
+export default function ThemeToggle({ placement = 'fixed' }: ThemeToggleProps) {
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>('dark');
 
@@ -36,7 +41,7 @@ export default function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className={`theme-toggle ${placement === 'inline' ? 'inline' : ''}`}
       onClick={toggleTheme}
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}

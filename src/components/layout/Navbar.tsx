@@ -1,52 +1,97 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { useLogout } from '@/hooks/useAuth';
+import ThemeToggle from '@/components/ui/ThemeToggle';
+import { Button, ButtonLink } from '@/components/ui/Button';
 
 export default function Navbar() {
   const { user, isAuthenticated } = useAuthStore();
   const { logout } = useLogout();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const sectionIds = ['sensors', 'how', 'pricing', 'about'];
+
+    const updateActiveSection = () => {
+      if (pathname !== '/') {
+        setActiveSection('');
+        return;
+      }
+
+      const scrollPos = window.scrollY + 160;
+      let current = '';
+
+      sectionIds.forEach((id) => {
+        const section = document.getElementById(id);
+        if (section && scrollPos >= section.offsetTop) {
+          current = id;
+        }
+      });
+
+      setActiveSection(current);
+    };
+
+    updateActiveSection();
+    window.addEventListener('scroll', updateActiveSection, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', updateActiveSection);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    document.body.classList.toggle('nav-menu-open', menuOpen);
+    return () => document.body.classList.remove('nav-menu-open');
+  }, [menuOpen]);
+
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, []);
+
+  const linkState = (id: string) => (pathname === '/' && activeSection === id ? 'active' : '');
+  const sectionHref = (id: string) => (pathname === '/' ? `#${id}` : `/#${id}`);
 
   return (
-    <nav id="nav">
-      <Link href="/" className="nav-logo">
+    <nav id="nav" className={`${mounted ? 'nav-mounted' : ''} ${menuOpen ? 'menu-open' : ''}`.trim()}>
+      <Link href="/" className="nav-logo" onClick={() => setMenuOpen(false)}>
         VITAR<span>.</span>
       </Link>
 
-      <ul
-        className="nav-links"
-        style={{
-          display: menuOpen ? 'flex' : undefined,
-          position: menuOpen ? 'absolute' : undefined,
-          top: menuOpen ? '72px' : undefined,
-          left: menuOpen ? '5%' : undefined,
-          right: menuOpen ? '5%' : undefined,
-          background: menuOpen ? 'var(--surface-strong)' : undefined,
-          border: menuOpen ? '1px solid var(--border)' : undefined,
-          padding: menuOpen ? '1rem' : undefined,
-          flexDirection: menuOpen ? 'column' : undefined,
-          gap: menuOpen ? '1rem' : undefined,
-          zIndex: menuOpen ? 600 : undefined,
-        }}
-      >
+      <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
         <li>
-          <a href="#sensors">Device</a>
+          <a href={sectionHref('sensors')} className={linkState('sensors')} onClick={() => { setActiveSection('sensors'); setMenuOpen(false); }}>Device</a>
         </li>
         <li>
-          <a href="#how">How It Works</a>
+          <a href={sectionHref('how')} className={linkState('how')} onClick={() => { setActiveSection('how'); setMenuOpen(false); }}>How It Works</a>
         </li>
         <li>
-          <a href="#pricing">Plans</a>
+          <a href={sectionHref('pricing')} className={linkState('pricing')} onClick={() => { setActiveSection('pricing'); setMenuOpen(false); }}>Plans</a>
         </li>
         <li>
-          <a href="#about">Mission</a>
+          <a href={sectionHref('about')} className={linkState('about')} onClick={() => { setActiveSection('about'); setMenuOpen(false); }}>Mission</a>
         </li>
         {isAuthenticated && (
           <li>
-            <Link href="/dashboard">Dashboard</Link>
+            <Link href="/dashboard" className={pathname.startsWith('/dashboard') ? 'active' : ''} onClick={() => setMenuOpen(false)} aria-current={pathname.startsWith('/dashboard') ? 'page' : undefined}>Dashboard</Link>
           </li>
         )}
       </ul>
@@ -54,37 +99,46 @@ export default function Navbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         {isAuthenticated ? (
           <>
-            <span style={{ color: '#8A8A8E', fontSize: '.78rem' }}>
+            <span className="nav-user">
               {user?.firstName}
             </span>
-            <Link href="/dashboard" className="nav-cta" style={{ textDecoration: 'none' }}>
+            <ButtonLink href="/dashboard" variant="neon" size="sm" className="neon-cta-nav">
               Dashboard
-            </Link>
-            <button
-              type="button"
-              className="btn-g"
-              style={{ textDecoration: 'none', padding: '.6rem 1.1rem', fontSize: '.78rem' }}
-              onClick={logout}
-            >
+            </ButtonLink>
+            <Button type="button" variant="ghost" size="sm" onClick={logout}>
               Sign Out
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <Link href="/login" className="nav-cta" style={{ textDecoration: 'none' }}>
+            <ButtonLink href="/login" variant="primary" size="sm">
               Sign In
-            </Link>
-            <Link href="/signup" className="btn-p" style={{ textDecoration: 'none', padding: '.6rem 1.5rem', fontSize: '.82rem' }}>
+            </ButtonLink>
+            <ButtonLink href="/signup" variant="neon" size="sm" className="neon-cta-nav">
               Get Started
-            </Link>
+            </ButtonLink>
           </>
         )}
 
-        <button className="ham" type="button" onClick={() => setMenuOpen((v) => !v)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+          <ThemeToggle placement="inline" />
+        </div>
+
+        <button
+          className="ham"
+          type="button"
+          aria-expanded={menuOpen}
+          aria-label="Toggle navigation menu"
+          onClick={() => setMenuOpen((v) => !v)}
+        >
           <span />
           <span />
           <span />
         </button>
+      </div>
+
+      <div className="nav-progress" aria-hidden="true">
+        <span id="navProgress" className="nav-progress-fill" />
       </div>
     </nav>
   );

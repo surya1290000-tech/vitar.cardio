@@ -99,7 +99,42 @@ export function useLogin() {
     }
   };
 
-  return { login, loading, error, setError };
+  const loginWithGoogle = async (
+    credential: string,
+    options?: { redirectTo?: string | null }
+  ) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/oauth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ credential }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(json.error || 'Google sign-in failed. Please try again.');
+        return null;
+      }
+
+      setUser(json.user, json.accessToken);
+      const redirectTo = options?.redirectTo === undefined ? '/dashboard' : options.redirectTo;
+      if (redirectTo) {
+        router.push(redirectTo);
+      }
+      return json;
+    } catch {
+      setError('Network error. Please check your connection.');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { login, loginWithGoogle, loading, error, setError };
 }
 
 // ── VERIFY OTP ─────────────────────────────────────────────────

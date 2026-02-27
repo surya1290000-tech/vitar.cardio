@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import ThemeToggle from "@/components/ui/ThemeToggle";
+import ToastProvider from "@/components/ui/ToastProvider";
+import PageTransition from "@/components/ui/PageTransition";
 
 export const metadata: Metadata = {
   title: "VITAR — Your Heart. Protected. Always.",
@@ -21,8 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ThemeToggle />
-        {children}
+        <ToastProvider>
+          <PageTransition>{children}</PageTransition>
+        </ToastProvider>
       </body>
     </html>
   );

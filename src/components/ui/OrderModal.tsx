@@ -2,8 +2,33 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
+import { Button } from '@/components/ui/Button';
 
 type DeviceModel = 'core' | 'pro' | 'elite';
+type OrderFormFields = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  acceptDisclaimer: boolean;
+};
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateOrderForm(fields: OrderFormFields) {
+  const errors: Partial<Record<keyof OrderFormFields, string>> = {};
+
+  if (!fields.firstName.trim()) errors.firstName = 'First name is required.';
+  if (!fields.lastName.trim()) errors.lastName = 'Last name is required.';
+
+  if (!fields.email.trim()) errors.email = 'Email is required.';
+  else if (!emailPattern.test(fields.email.trim())) errors.email = 'Enter a valid email address.';
+
+  if (!fields.acceptDisclaimer) {
+    errors.acceptDisclaimer = 'Please accept the medical disclaimer to continue.';
+  }
+
+  return errors;
+}
 
 function closeOrderModal() {
   document.getElementById('orderModal')?.classList.remove('open');
@@ -18,6 +43,13 @@ export default function OrderModal() {
   const [acceptDisclaimer, setAcceptDisclaimer] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof OrderFormFields, string>>>({});
+  const [touched, setTouched] = useState<Record<'firstName' | 'lastName' | 'email', boolean>>({
+    firstName: false,
+    lastName: false,
+    email: false,
+  });
+  const [disclaimerTouched, setDisclaimerTouched] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -46,13 +78,19 @@ export default function OrderModal() {
     e.preventDefault();
     setError('');
 
+    const validation = validateOrderForm({
+      firstName,
+      lastName,
+      email,
+      acceptDisclaimer,
+    });
+    setFieldErrors(validation);
+    setTouched({ firstName: true, lastName: true, email: true });
+    setDisclaimerTouched(true);
+    if (Object.keys(validation).length > 0) return;
+
     if (!isAuthenticated) {
       setError('Please sign in first to place an order.');
-      return;
-    }
-
-    if (!acceptDisclaimer) {
-      setError('Please accept the medical disclaimer to continue.');
       return;
     }
 
@@ -101,6 +139,37 @@ export default function OrderModal() {
     if (e.target === e.currentTarget) closeOrderModal();
   };
 
+  const handleBlur = (field: 'firstName' | 'lastName' | 'email') => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    setFieldErrors(
+      validateOrderForm({
+        firstName,
+        lastName,
+        email,
+        acceptDisclaimer,
+      })
+    );
+  };
+
+  const resolveInputState = (field: 'firstName' | 'lastName' | 'email'): React.CSSProperties => {
+    const value = field === 'firstName' ? firstName : field === 'lastName' ? lastName : email;
+    const hasError = touched[field] && Boolean(fieldErrors[field]);
+    const isValid = touched[field] && !fieldErrors[field] && value.trim().length > 0;
+
+    return {
+      border: hasError
+        ? '1px solid rgba(231,76,60,0.55)'
+        : isValid
+        ? '1px solid rgba(46,204,113,0.55)'
+        : undefined,
+      boxShadow: hasError
+        ? '0 0 0 2px rgba(231,76,60,0.15)'
+        : isValid
+        ? '0 0 0 2px rgba(46,204,113,0.12)'
+        : undefined,
+    };
+  };
+
   return (
     <div className="modal-ov" id="orderModal" onClick={onOverlayClick}>
       <div className="modal">
@@ -130,17 +199,81 @@ export default function OrderModal() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.8rem' }}>
             <div>
               <label className="f-lbl">First Name</label>
-              <input className="f-inp" type="text" style={{ marginTop: '.4rem' }} value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+              <input
+                className="f-inp"
+                type="text"
+                style={{ marginTop: '.4rem', ...resolveInputState('firstName') }}
+                value={firstName}
+                onBlur={() => handleBlur('firstName')}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setFirstName(next);
+                  setError('');
+                  setFieldErrors(
+                    validateOrderForm({
+                      firstName: next,
+                      lastName,
+                      email,
+                      acceptDisclaimer,
+                    })
+                  );
+                }}
+                required
+              />
+              {touched.firstName && fieldErrors.firstName && <div style={fieldErrorStyle}>{fieldErrors.firstName}</div>}
             </div>
             <div>
               <label className="f-lbl">Last Name</label>
-              <input className="f-inp" type="text" style={{ marginTop: '.4rem' }} value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+              <input
+                className="f-inp"
+                type="text"
+                style={{ marginTop: '.4rem', ...resolveInputState('lastName') }}
+                value={lastName}
+                onBlur={() => handleBlur('lastName')}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setLastName(next);
+                  setError('');
+                  setFieldErrors(
+                    validateOrderForm({
+                      firstName,
+                      lastName: next,
+                      email,
+                      acceptDisclaimer,
+                    })
+                  );
+                }}
+                required
+              />
+              {touched.lastName && fieldErrors.lastName && <div style={fieldErrorStyle}>{fieldErrors.lastName}</div>}
             </div>
           </div>
 
           <div>
             <label className="f-lbl">Email</label>
-            <input className="f-inp" type="email" style={{ marginTop: '.4rem' }} value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input
+              className="f-inp"
+              type="email"
+              style={{ marginTop: '.4rem', ...resolveInputState('email') }}
+              value={email}
+              onBlur={() => handleBlur('email')}
+              onChange={(e) => {
+                const next = e.target.value;
+                setEmail(next);
+                setError('');
+                setFieldErrors(
+                  validateOrderForm({
+                    firstName,
+                    lastName,
+                    email: next,
+                    acceptDisclaimer,
+                  })
+                );
+              }}
+              required
+            />
+            {touched.email && fieldErrors.email && <div style={fieldErrorStyle}>{fieldErrors.email}</div>}
+            {touched.email && !fieldErrors.email && email.trim().length > 0 && <div style={fieldOkStyle}>Email format looks good.</div>}
           </div>
 
           <div>
@@ -161,17 +294,40 @@ export default function OrderModal() {
               type="checkbox"
               checked={acceptDisclaimer}
               onChange={(e) => setAcceptDisclaimer(e.target.checked)}
+              onBlur={() => setDisclaimerTouched(true)}
               style={{ marginTop: '2px', accentColor: 'var(--accent)' }}
             />
             I acknowledge the medical disclaimer and Terms of Service.
           </label>
+          {disclaimerTouched && fieldErrors.acceptDisclaimer && <div style={fieldErrorStyle}>{fieldErrors.acceptDisclaimer}</div>}
 
-          <button className="btn-p" style={{ width: '100%', borderRadius: '3px', border: 'none', padding: '.9rem' }} type="submit" disabled={loading}>
+          <Button variant="primary" size="md" style={{ width: '100%', borderRadius: '3px', border: 'none' }} type="submit" disabled={loading}>
             {loading ? 'Processing...' : 'Secure Pre-Order'}
-          </button>
+          </Button>
+          {loading && <div style={fieldHintStyle}>Preparing secure checkout...</div>}
         </form>
       </div>
     </div>
   );
 }
 
+const fieldErrorStyle: React.CSSProperties = {
+  marginTop: '0.45rem',
+  color: '#E74C3C',
+  fontSize: '0.74rem',
+  lineHeight: 1.4,
+};
+
+const fieldOkStyle: React.CSSProperties = {
+  marginTop: '0.45rem',
+  color: '#2ECC71',
+  fontSize: '0.74rem',
+  lineHeight: 1.4,
+};
+
+const fieldHintStyle: React.CSSProperties = {
+  marginTop: '0.2rem',
+  color: 'var(--muted)',
+  fontSize: '0.72rem',
+  lineHeight: 1.4,
+};

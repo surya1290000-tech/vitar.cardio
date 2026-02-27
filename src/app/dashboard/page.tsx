@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
 import { useLogout } from '@/hooks/useAuth';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface Order {
   id: string;
@@ -48,6 +49,7 @@ interface AlertItem {
 export default function DashboardPage() {
   const { user, isAuthenticated, accessToken, setUser } = useAuthStore();
   const { logout } = useLogout();
+  const { showToast } = useToast();
   const router = useRouter();
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -89,6 +91,10 @@ export default function DashboardPage() {
     spo2: 98,
     aiRiskScore: 0.12,
   });
+
+  const deviceColumns = ['Serial', 'Model', 'Status', 'Battery', 'Last Sync', 'Action'] as const;
+  const alertColumns = ['Type', 'Severity', 'Status', 'Created', 'Action'] as const;
+  const orderColumns = ['Order #', 'Device', 'Status', 'Total', 'Date'] as const;
 
   const effectiveDevices = useMemo(() => (demoMode && devices.length === 0 ? [demoDevice] : devices), [demoMode, devices, demoDevice]);
   const effectiveReading = useMemo(() => (demoMode && !latestReading ? demoReading : latestReading), [demoMode, latestReading, demoReading]);
@@ -221,6 +227,7 @@ export default function DashboardPage() {
       const token = await getAccessToken();
       if (!token) {
         setAlertsError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
         return;
       }
 
@@ -247,13 +254,16 @@ export default function DashboardPage() {
       const json = await res.json();
       if (!res.ok) {
         setAlertsError(json?.error || 'Failed to trigger alert.');
+        showToast({ type: 'error', title: 'Alert Failed', message: json?.error || 'Failed to trigger alert.' });
         return;
       }
 
       setAlertsInfo('Test alert triggered.');
+      showToast({ type: 'success', title: 'Alert Triggered' });
       await fetchAlerts(token);
     } catch {
       setAlertsError('Network error while triggering alert.');
+      showToast({ type: 'error', title: 'Alert Failed', message: 'Network error while triggering alert.' });
     } finally {
       setAlertsLoading(false);
     }
@@ -267,6 +277,7 @@ export default function DashboardPage() {
       const token = await getAccessToken();
       if (!token) {
         setAlertsError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
         return;
       }
 
@@ -281,13 +292,16 @@ export default function DashboardPage() {
       const json = await res.json();
       if (!res.ok) {
         setAlertsError(json?.error || 'Failed to update alert.');
+        showToast({ type: 'error', title: 'Alert Update Failed', message: json?.error || 'Failed to update alert.' });
         return;
       }
 
       setAlertsInfo(status === 'acknowledged' ? 'Alert acknowledged.' : 'Alert resolved.');
+      showToast({ type: 'success', title: status === 'acknowledged' ? 'Alert Acknowledged' : 'Alert Resolved' });
       await fetchAlerts(token);
     } catch {
       setAlertsError('Network error while updating alert.');
+      showToast({ type: 'error', title: 'Alert Update Failed', message: 'Network error while updating alert.' });
     } finally {
       setAlertActionLoadingId(null);
     }
@@ -302,6 +316,7 @@ export default function DashboardPage() {
     const serial = pairSerialNumber.trim();
     if (!serial) {
       setPairError('Enter a serial number.');
+      showToast({ type: 'error', title: 'Device Pairing', message: 'Enter a serial number.' });
       return;
     }
 
@@ -310,6 +325,7 @@ export default function DashboardPage() {
       const token = await getAccessToken();
       if (!token) {
         setPairError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
         return;
       }
 
@@ -324,14 +340,17 @@ export default function DashboardPage() {
       const json = await res.json();
       if (!res.ok) {
         setPairError(json?.error || 'Failed to pair device.');
+        showToast({ type: 'error', title: 'Pairing Failed', message: json?.error || 'Failed to pair device.' });
         return;
       }
 
       setPairSerialNumber('');
       setPairSuccess('Device paired successfully.');
+      showToast({ type: 'success', title: 'Device Paired' });
       await fetchHealthData(token);
     } catch {
       setPairError('Network error while pairing device.');
+      showToast({ type: 'error', title: 'Pairing Failed', message: 'Network error while pairing device.' });
     } finally {
       setPairing(false);
     }
@@ -347,6 +366,7 @@ export default function DashboardPage() {
       const token = await getAccessToken();
       if (!token) {
         setPairError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
         return;
       }
 
@@ -361,13 +381,16 @@ export default function DashboardPage() {
       const json = await res.json();
       if (!res.ok) {
         setPairError(json?.error || 'Failed to unpair device.');
+        showToast({ type: 'error', title: 'Unpair Failed', message: json?.error || 'Failed to unpair device.' });
         return;
       }
 
       setPairSuccess('Device unpaired.');
+      showToast({ type: 'success', title: 'Device Unpaired' });
       await fetchHealthData(token);
     } catch {
       setPairError('Network error while unpairing device.');
+      showToast({ type: 'error', title: 'Unpair Failed', message: 'Network error while unpairing device.' });
     } finally {
       setDeviceActionLoadingId(null);
     }
@@ -430,9 +453,9 @@ export default function DashboardPage() {
     <div
       style={{
         minHeight: '100vh',
-        background: '#0D0D0F',
+        background: 'var(--deep)',
         fontFamily: "'DM Sans', sans-serif",
-        color: '#F9F8F6',
+        color: 'var(--white)',
       }}
     >
       <nav
@@ -442,7 +465,7 @@ export default function DashboardPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: '1px solid var(--border)',
           background: 'rgba(13,13,15,0.9)',
           backdropFilter: 'blur(24px)',
           position: 'sticky',
@@ -456,14 +479,14 @@ export default function DashboardPage() {
             fontFamily: "'DM Serif Display', serif",
             fontSize: '1.3rem',
             letterSpacing: '0.12em',
-            color: '#F9F8F6',
+            color: 'var(--white)',
             textDecoration: 'none',
           }}
         >
           VITAR<span style={{ color: '#C0392B' }}>.</span>
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          <span style={{ fontSize: '0.82rem', color: '#8A8A8E' }}>
+          <span style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
             {user.firstName} {user.lastName}
           </span>
           <button
@@ -473,7 +496,7 @@ export default function DashboardPage() {
               border: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '3px',
               padding: '0.5rem 1.2rem',
-              color: '#F9F8F6',
+              color: 'var(--white)',
               fontFamily: "'DM Sans', sans-serif",
               fontSize: '0.8rem',
               cursor: 'pointer',
@@ -493,7 +516,7 @@ export default function DashboardPage() {
                 background: demoMode ? 'rgba(26,188,156,0.18)' : 'rgba(255,255,255,0.06)',
                 border: `1px solid ${demoMode ? 'rgba(26,188,156,0.45)' : 'rgba(255,255,255,0.12)'}`,
                 borderRadius: '20px',
-                color: demoMode ? '#1ABC9C' : '#8A8A8E',
+                color: demoMode ? '#1ABC9C' : 'var(--muted)',
                 fontSize: '0.72rem',
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
@@ -531,7 +554,7 @@ export default function DashboardPage() {
             <br />
             {user.firstName}.
           </h1>
-          <p style={{ color: '#8A8A8E', fontSize: '0.95rem' }}>
+          <p style={{ color: 'var(--muted)', fontSize: '0.95rem' }}>
             Your cardiac health dashboard is ready. Connect your VITAR device to begin monitoring.
           </p>
         </div>
@@ -549,36 +572,36 @@ export default function DashboardPage() {
               label: 'Device Status',
               value: healthLoading ? 'Loading...' : hasDevice ? deviceStatus : 'Not Connected',
               unit: '',
-              color: hasDevice ? '#F9F8F6' : '#8A8A8E',
+              color: hasDevice ? 'var(--white)' : 'var(--muted)',
               icon: 'D',
             },
             {
               label: 'Heart Rate',
               value: healthLoading ? '...' : heartRateValue ?? '--',
               unit: 'BPM',
-              color: heartRateValue != null ? '#F9F8F6' : '#8A8A8E',
+              color: heartRateValue != null ? 'var(--white)' : 'var(--muted)',
               icon: 'HR',
             },
             {
               label: 'SpO2',
               value: healthLoading ? '...' : spo2Value ?? '--',
               unit: '%',
-              color: spo2Value != null ? '#F9F8F6' : '#8A8A8E',
+              color: spo2Value != null ? 'var(--white)' : 'var(--muted)',
               icon: 'O2',
             },
             {
               label: 'AI Risk Score',
               value: healthLoading ? '...' : riskScorePercent != null ? riskScorePercent : '--',
               unit: riskScorePercent != null ? '%' : '',
-              color: riskScorePercent != null ? '#F9F8F6' : '#8A8A8E',
+              color: riskScorePercent != null ? 'var(--white)' : 'var(--muted)',
               icon: 'AI',
             },
           ].map((card, i) => (
             <div
               key={i}
               style={{
-                background: '#1A1A1C',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--graphite)',
+                border: '1px solid var(--border)',
                 borderRadius: '8px',
                 padding: '1.5rem',
               }}
@@ -586,7 +609,7 @@ export default function DashboardPage() {
               <div
                 style={{
                   fontSize: '0.62rem',
-                  color: '#8A8A8E',
+                  color: 'var(--muted)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.1em',
                   marginBottom: '0.8rem',
@@ -604,7 +627,7 @@ export default function DashboardPage() {
               >
                 {card.value}
               </div>
-              {card.unit && <div style={{ fontSize: '0.7rem', color: '#8A8A8E', marginTop: '0.3rem' }}>{card.unit}</div>}
+              {card.unit && <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.3rem' }}>{card.unit}</div>}
             </div>
           ))}
         </div>
@@ -642,7 +665,7 @@ export default function DashboardPage() {
             <div style={{ fontWeight: 500, marginBottom: '0.3rem' }}>
               {hasDevice ? `${primaryDevice?.model ?? 'VITAR'} connected` : 'No device connected'}
             </div>
-            <div style={{ fontSize: '0.82rem', color: '#8A8A8E' }}>
+            <div style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>
               {hasDevice
                 ? `Status: ${deviceStatus}${primaryDevice?.batteryLevel != null ? ` | Battery: ${primaryDevice.batteryLevel}%` : ''}`
                 : 'Pre-order your VITAR device to start monitoring your cardiac health'}
@@ -653,7 +676,7 @@ export default function DashboardPage() {
               href="/#pricing"
               style={{
                 background: '#C0392B',
-                color: '#F9F8F6',
+                color: 'var(--white)',
                 textDecoration: 'none',
                 padding: '0.8rem 1.8rem',
                 borderRadius: '3px',
@@ -672,13 +695,13 @@ export default function DashboardPage() {
         <div
           style={{
             marginTop: '2rem',
-            background: '#1A1A1C',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--graphite)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '1.5rem',
           }}
         >
-          <div style={{ fontSize: '0.72rem', color: '#8A8A8E', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
             Device Management
           </div>
 
@@ -688,10 +711,10 @@ export default function DashboardPage() {
               onChange={(e) => setPairSerialNumber(e.target.value)}
               placeholder="Device serial number"
               style={{
-                background: '#0D0D0F',
+                background: 'var(--deep)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: '4px',
-                color: '#F9F8F6',
+                color: 'var(--white)',
                 fontSize: '0.85rem',
                 padding: '0.7rem 0.8rem',
               }}
@@ -700,10 +723,10 @@ export default function DashboardPage() {
               value={pairModel}
               onChange={(e) => setPairModel(e.target.value)}
               style={{
-                background: '#0D0D0F',
+                background: 'var(--deep)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: '4px',
-                color: '#F9F8F6',
+                color: 'var(--white)',
                 fontSize: '0.85rem',
                 padding: '0.7rem 0.8rem',
               }}
@@ -719,7 +742,7 @@ export default function DashboardPage() {
                 background: '#C0392B',
                 border: 'none',
                 borderRadius: '4px',
-                color: '#F9F8F6',
+                color: 'var(--white)',
                 fontSize: '0.8rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
@@ -740,79 +763,93 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  {['Serial', 'Model', 'Status', 'Battery', 'Last Sync', 'Action'].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        textAlign: 'left',
-                        padding: '0.7rem 0.3rem',
-                        fontSize: '0.68rem',
-                        color: '#8A8A8E',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        fontWeight: 500,
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {effectiveDevices.map((d) => (
-                  <tr key={d.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <td style={{ padding: '0.8rem 0.3rem', fontFamily: 'monospace', color: '#8A8A8E' }}>{d.serialNumber ?? 'N/A'}</td>
-                    <td style={{ padding: '0.8rem 0.3rem' }}>{d.model ?? 'N/A'}</td>
-                    <td style={{ padding: '0.8rem 0.3rem', color: '#8A8A8E' }}>{d.status ?? 'unknown'}</td>
-                    <td style={{ padding: '0.8rem 0.3rem', color: '#8A8A8E' }}>{d.batteryLevel != null ? `${d.batteryLevel}%` : 'N/A'}</td>
-                    <td style={{ padding: '0.8rem 0.3rem', color: '#8A8A8E' }}>
-                      {d.lastSync ? new Date(d.lastSync).toLocaleString('en-IN') : 'N/A'}
-                    </td>
-                    <td style={{ padding: '0.8rem 0.3rem' }}>
-                      {d.id === 'demo-device' ? (
-                        <span style={{ color: '#8A8A8E', fontSize: '0.72rem' }}>Simulated</span>
-                      ) : (
-                        <button
-                          onClick={() => handleUnpairDevice(d.id)}
-                          disabled={deviceActionLoadingId === d.id}
-                          style={{
-                            background: 'rgba(192,57,43,0.1)',
-                            border: '1px solid rgba(192,57,43,0.3)',
-                            borderRadius: '3px',
-                            color: '#C0392B',
-                            padding: '0.35rem 0.7rem',
-                            fontSize: '0.72rem',
-                            cursor: deviceActionLoadingId === d.id ? 'not-allowed' : 'pointer',
-                            opacity: deviceActionLoadingId === d.id ? 0.7 : 1,
-                          }}
-                        >
-                          {deviceActionLoadingId === d.id ? 'Removing...' : 'Unpair'}
-                        </button>
-                      )}
-                    </td>
+          {healthLoading ? (
+            <div className="skeleton-stack" style={{ marginTop: '0.4rem' }}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="skeleton-row">
+                  <div className="skeleton-line long" />
+                  <div className="skeleton-line mid" />
+                  <div className="skeleton-line mid" />
+                  <div className="skeleton-line short" />
+                  <div className="skeleton-line short" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table table-card" style={{ fontSize: '0.84rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    {deviceColumns.map((h) => (
+                      <th
+                        key={h}
+                        style={{
+                          textAlign: 'left',
+                          padding: '0.7rem 0.3rem',
+                          fontSize: '0.68rem',
+                          color: 'var(--muted)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.08em',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {!healthLoading && effectiveDevices.length === 0 && <p style={{ color: '#8A8A8E', fontSize: '0.85rem', marginTop: '0.8rem' }}>No devices paired yet.</p>}
-          </div>
+                </thead>
+                <tbody>
+                  {effectiveDevices.map((d) => (
+                    <tr key={d.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td data-label={deviceColumns[0]} style={{ padding: '0.8rem 0.3rem', fontFamily: 'monospace', color: 'var(--muted)' }}>{d.serialNumber ?? 'N/A'}</td>
+                      <td data-label={deviceColumns[1]} style={{ padding: '0.8rem 0.3rem' }}>{d.model ?? 'N/A'}</td>
+                      <td data-label={deviceColumns[2]} style={{ padding: '0.8rem 0.3rem', color: 'var(--muted)' }}>{d.status ?? 'unknown'}</td>
+                      <td data-label={deviceColumns[3]} style={{ padding: '0.8rem 0.3rem', color: 'var(--muted)' }}>{d.batteryLevel != null ? `${d.batteryLevel}%` : 'N/A'}</td>
+                      <td data-label={deviceColumns[4]} style={{ padding: '0.8rem 0.3rem', color: 'var(--muted)' }}>
+                        {d.lastSync ? new Date(d.lastSync).toLocaleString('en-IN') : 'N/A'}
+                      </td>
+                      <td data-label={deviceColumns[5]} style={{ padding: '0.8rem 0.3rem' }}>
+                        {d.id === 'demo-device' ? (
+                          <span style={{ color: 'var(--muted)', fontSize: '0.72rem' }}>Simulated</span>
+                        ) : (
+                          <button
+                            onClick={() => handleUnpairDevice(d.id)}
+                            disabled={deviceActionLoadingId === d.id}
+                            style={{
+                              background: 'rgba(192,57,43,0.1)',
+                              border: '1px solid rgba(192,57,43,0.3)',
+                              borderRadius: '3px',
+                              color: '#C0392B',
+                              padding: '0.35rem 0.7rem',
+                              fontSize: '0.72rem',
+                              cursor: deviceActionLoadingId === d.id ? 'not-allowed' : 'pointer',
+                              opacity: deviceActionLoadingId === d.id ? 0.7 : 1,
+                            }}
+                          >
+                            {deviceActionLoadingId === d.id ? 'Removing...' : 'Unpair'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {effectiveDevices.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.8rem' }}>No devices paired yet.</p>}
+            </div>
+          )}
         </div>
 
         <div
           style={{
             marginTop: '2rem',
-            background: '#1A1A1C',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--graphite)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '1.5rem',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: '0.72rem', color: '#8A8A8E', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               Alerts ({activeAlerts.length} active)
             </div>
             <button
@@ -838,120 +875,134 @@ export default function DashboardPage() {
           {alertsInfo && <div style={{ color: '#2ECC71', fontSize: '0.82rem', marginBottom: '0.6rem' }}>{alertsInfo}</div>}
           {alertsError && <div style={{ color: '#E74C3C', fontSize: '0.82rem', marginBottom: '0.6rem' }}>{alertsError}</div>}
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  {['Type', 'Severity', 'Status', 'Created', 'Action'].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        textAlign: 'left',
-                        padding: '0.7rem 0.3rem',
-                        fontSize: '0.68rem',
-                        color: '#8A8A8E',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        fontWeight: 500,
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {alerts.map((a) => (
-                  <tr key={a.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <td style={{ padding: '0.8rem 0.3rem' }}>{a.alertType}</td>
-                    <td style={{ padding: '0.8rem 0.3rem' }}>
-                      <span
+          {alertsLoading && alerts.length === 0 ? (
+            <div className="skeleton-stack" style={{ marginTop: '0.4rem' }}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="skeleton-row">
+                  <div className="skeleton-line long" />
+                  <div className="skeleton-line short" />
+                  <div className="skeleton-line mid" />
+                  <div className="skeleton-line mid" />
+                  <div className="skeleton-line short" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table table-card" style={{ fontSize: '0.84rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    {alertColumns.map((h) => (
+                      <th
+                        key={h}
                         style={{
+                          textAlign: 'left',
+                          padding: '0.7rem 0.3rem',
                           fontSize: '0.68rem',
-                          padding: '0.2rem 0.6rem',
-                          borderRadius: '20px',
-                          background:
-                            a.severity === 'critical'
-                              ? 'rgba(231,76,60,0.1)'
-                              : a.severity === 'high'
-                              ? 'rgba(243,156,18,0.1)'
-                              : 'rgba(255,255,255,0.05)',
-                          color: a.severity === 'critical' ? '#E74C3C' : a.severity === 'high' ? '#F39C12' : '#8A8A8E',
-                          border: '1px solid rgba(255,255,255,0.12)',
+                          color: 'var(--muted)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.08em',
+                          fontWeight: 500,
                         }}
                       >
-                        {a.severity}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.8rem 0.3rem', color: '#8A8A8E' }}>{a.status}</td>
-                    <td style={{ padding: '0.8rem 0.3rem', color: '#8A8A8E', fontSize: '0.78rem' }}>
-                      {new Date(a.createdAt).toLocaleString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
-                    <td style={{ padding: '0.8rem 0.3rem' }}>
-                      {a.status === 'pending' && (
-                        <button
-                          onClick={() => updateAlertStatus(a.id, 'acknowledged')}
-                          disabled={alertActionLoadingId === a.id}
-                          style={{
-                            background: 'rgba(52,152,219,0.14)',
-                            border: '1px solid rgba(52,152,219,0.35)',
-                            borderRadius: '3px',
-                            color: '#3498DB',
-                            padding: '0.35rem 0.6rem',
-                            fontSize: '0.72rem',
-                            cursor: alertActionLoadingId === a.id ? 'not-allowed' : 'pointer',
-                            opacity: alertActionLoadingId === a.id ? 0.7 : 1,
-                          }}
-                        >
-                          Acknowledge
-                        </button>
-                      )}
-                      {a.status === 'acknowledged' && (
-                        <button
-                          onClick={() => updateAlertStatus(a.id, 'resolved')}
-                          disabled={alertActionLoadingId === a.id}
-                          style={{
-                            background: 'rgba(46,204,113,0.14)',
-                            border: '1px solid rgba(46,204,113,0.35)',
-                            borderRadius: '3px',
-                            color: '#2ECC71',
-                            padding: '0.35rem 0.6rem',
-                            fontSize: '0.72rem',
-                            cursor: alertActionLoadingId === a.id ? 'not-allowed' : 'pointer',
-                            opacity: alertActionLoadingId === a.id ? 0.7 : 1,
-                          }}
-                        >
-                          Resolve
-                        </button>
-                      )}
-                      {(a.status === 'resolved' || a.status === 'dismissed') && (
-                        <span style={{ color: '#8A8A8E', fontSize: '0.72rem' }}>Closed</span>
-                      )}
-                    </td>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {!alertsLoading && alerts.length === 0 && <p style={{ color: '#8A8A8E', fontSize: '0.85rem', marginTop: '0.8rem' }}>No alerts yet.</p>}
-          </div>
+                </thead>
+                <tbody>
+                  {alerts.map((a) => (
+                    <tr key={a.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td data-label={alertColumns[0]} style={{ padding: '0.8rem 0.3rem' }}>{a.alertType}</td>
+                      <td data-label={alertColumns[1]} style={{ padding: '0.8rem 0.3rem' }}>
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            padding: '0.2rem 0.6rem',
+                            borderRadius: '20px',
+                            background:
+                              a.severity === 'critical'
+                                ? 'rgba(231,76,60,0.1)'
+                                : a.severity === 'high'
+                                ? 'rgba(243,156,18,0.1)'
+                                : 'rgba(255,255,255,0.05)',
+                            color: a.severity === 'critical' ? '#E74C3C' : a.severity === 'high' ? '#F39C12' : 'var(--muted)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                          }}
+                        >
+                          {a.severity}
+                        </span>
+                      </td>
+                      <td data-label={alertColumns[2]} style={{ padding: '0.8rem 0.3rem', color: 'var(--muted)' }}>{a.status}</td>
+                      <td data-label={alertColumns[3]} style={{ padding: '0.8rem 0.3rem', color: 'var(--muted)', fontSize: '0.78rem' }}>
+                        {new Date(a.createdAt).toLocaleString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td data-label={alertColumns[4]} style={{ padding: '0.8rem 0.3rem', display: 'flex', gap: '0.4rem' }}>
+                        {a.status === 'pending' && (
+                          <button
+                            onClick={() => updateAlertStatus(a.id, 'acknowledged')}
+                            disabled={alertActionLoadingId === a.id}
+                            style={{
+                              background: 'rgba(52,152,219,0.14)',
+                              border: '1px solid rgba(52,152,219,0.35)',
+                              borderRadius: '3px',
+                              color: '#3498DB',
+                              padding: '0.35rem 0.6rem',
+                              fontSize: '0.72rem',
+                              cursor: alertActionLoadingId === a.id ? 'not-allowed' : 'pointer',
+                              opacity: alertActionLoadingId === a.id ? 0.7 : 1,
+                            }}
+                          >
+                            Acknowledge
+                          </button>
+                        )}
+                        {a.status === 'acknowledged' && (
+                          <button
+                            onClick={() => updateAlertStatus(a.id, 'resolved')}
+                            disabled={alertActionLoadingId === a.id}
+                            style={{
+                              background: 'rgba(46,204,113,0.14)',
+                              border: '1px solid rgba(46,204,113,0.35)',
+                              borderRadius: '3px',
+                              color: '#2ECC71',
+                              padding: '0.35rem 0.6rem',
+                              fontSize: '0.72rem',
+                              cursor: alertActionLoadingId === a.id ? 'not-allowed' : 'pointer',
+                              opacity: alertActionLoadingId === a.id ? 0.7 : 1,
+                            }}
+                          >
+                            Resolve
+                          </button>
+                        )}
+                        {(a.status === 'resolved' || a.status === 'dismissed') && (
+                          <span style={{ color: 'var(--muted)', fontSize: '0.72rem' }}>Closed</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {alerts.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.8rem' }}>No alerts yet.</p>}
+            </div>
+          )}
         </div>
 
         <div
           style={{
             marginTop: '2rem',
-            background: '#1A1A1C',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--graphite)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '1.5rem',
           }}
         >
-          <div style={{ fontSize: '0.72rem', color: '#8A8A8E', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
             Account Details
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
@@ -962,7 +1013,7 @@ export default function DashboardPage() {
               { label: 'Subscription', value: 'No active plan' },
             ].map((item, i) => (
               <div key={i}>
-                <div style={{ fontSize: '0.7rem', color: '#8A8A8E', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   {item.label}
                 </div>
                 <div style={{ fontSize: '0.9rem' }}>{item.value}</div>
@@ -974,8 +1025,8 @@ export default function DashboardPage() {
         <div
           style={{
             marginTop: '2rem',
-            background: '#1A1A1C',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--graphite)',
+            border: '1px solid var(--border)',
             borderRadius: '8px',
             padding: '1.5rem',
           }}
@@ -989,7 +1040,7 @@ export default function DashboardPage() {
               marginBottom: '1rem',
             }}
           >
-            <div style={{ fontSize: '0.72rem', color: '#8A8A8E', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               Recent Orders
             </div>
             <Link href="/#pricing" style={{ color: '#C0392B', textDecoration: 'none', fontSize: '0.78rem' }}>
@@ -997,7 +1048,19 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {ordersLoading && <p style={{ color: '#8A8A8E', fontSize: '0.85rem' }}>Loading orders...</p>}
+          {ordersLoading && (
+            <div className="skeleton-stack" style={{ marginTop: '0.6rem' }}>
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="skeleton-row">
+                  <div className="skeleton-line long" />
+                  <div className="skeleton-line mid" />
+                  <div className="skeleton-line short" />
+                  <div className="skeleton-line short" />
+                  <div className="skeleton-line mid" />
+                </div>
+              ))}
+            </div>
+          )}
 
           {!ordersLoading && ordersError && (
             <div
@@ -1015,22 +1078,22 @@ export default function DashboardPage() {
           )}
 
           {!ordersLoading && !ordersError && recentOrders.length === 0 && (
-            <p style={{ color: '#8A8A8E', fontSize: '0.85rem' }}>No orders yet. Reserve your first device.</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>No orders yet. Reserve your first device.</p>
           )}
 
           {!ordersLoading && !ordersError && recentOrders.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <table className="data-table table-card" style={{ fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                    {['Order #', 'Device', 'Status', 'Total', 'Date'].map((h) => (
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    {orderColumns.map((h) => (
                       <th
                         key={h}
                         style={{
                           padding: '0.7rem 0.2rem',
                           textAlign: 'left',
                           fontSize: '0.68rem',
-                          color: '#8A8A8E',
+                          color: 'var(--muted)',
                           textTransform: 'uppercase',
                           letterSpacing: '0.08em',
                           fontWeight: 500,
@@ -1044,11 +1107,11 @@ export default function DashboardPage() {
                 <tbody>
                   {recentOrders.map((o) => (
                     <tr key={o.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <td style={{ padding: '0.9rem 0.2rem', fontFamily: 'monospace', color: '#C0392B', fontSize: '0.78rem' }}>
+                      <td data-label={orderColumns[0]} style={{ padding: '0.9rem 0.2rem', fontFamily: 'monospace', color: '#C0392B', fontSize: '0.78rem' }}>
                         {o.order_number}
                       </td>
-                      <td style={{ padding: '0.9rem 0.2rem', color: '#8A8A8E' }}>VITAR {o.device_model}</td>
-                      <td style={{ padding: '0.9rem 0.2rem' }}>
+                      <td data-label={orderColumns[1]} style={{ padding: '0.9rem 0.2rem', color: 'var(--muted)' }}>VITAR {o.device_model}</td>
+                      <td data-label={orderColumns[2]} style={{ padding: '0.9rem 0.2rem' }}>
                         <span
                           style={{
                             fontSize: '0.68rem',
@@ -1062,10 +1125,10 @@ export default function DashboardPage() {
                           {o.status}
                         </span>
                       </td>
-                      <td style={{ padding: '0.9rem 0.2rem', color: '#2ECC71', fontWeight: 500 }}>
+                      <td data-label={orderColumns[3]} style={{ padding: '0.9rem 0.2rem', color: '#2ECC71', fontWeight: 500 }}>
                         ${((o.total ?? 0) / 100).toFixed(2)} {o.currency?.toUpperCase()}
                       </td>
-                      <td style={{ padding: '0.9rem 0.2rem', color: '#8A8A8E', fontSize: '0.78rem' }}>
+                      <td data-label={orderColumns[4]} style={{ padding: '0.9rem 0.2rem', color: 'var(--muted)', fontSize: '0.78rem' }}>
                         {new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </td>
                     </tr>
@@ -1079,3 +1142,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+

@@ -9,7 +9,7 @@ export default function AuthDashboard() {
         <h2 class="auth-t">Your cardiac health dashboard awaits.</h2>
         <p class="auth-s">Join thousands of people monitoring their heart health with VITAR. Create your free account and pre-order your device today.</p>
         <div style="display:flex;flex-direction:column;gap:1rem;margin-top:2rem">
-          <a href="/signup" class="btn-p" style="text-decoration:none;text-align:center">Create Free Account</a>
+          <a href="/signup" class="btn-p neon-cta" style="text-decoration:none;text-align:center">Create Free Account</a>
           <a href="/login" class="btn-g" style="text-decoration:none;text-align:center">Sign In</a>
         </div>
         <div class="f-dis" style="margin-top:1.5rem">

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { ButtonLink } from '@/components/ui/Button';
 
 interface Order {
   id: string;
@@ -182,12 +183,12 @@ function SuccessContent() {
           )}
 
           <div style={{ display: 'flex', gap: '.8rem', flexWrap: 'wrap' }}>
-            <Link href="/dashboard" className="btn-p" style={{ textDecoration: 'none', borderRadius: '3px', padding: '.8rem 1.2rem' }}>
+            <ButtonLink href="/dashboard" variant="primary" size="sm" style={{ borderRadius: '3px' }}>
               Go to Dashboard
-            </Link>
-            <Link href="/" className="btn-g" style={{ textDecoration: 'none', borderRadius: '3px', padding: '.8rem 1.2rem' }}>
+            </ButtonLink>
+            <ButtonLink href="/" variant="ghost" size="sm" style={{ borderRadius: '3px' }}>
               Back to Home
-            </Link>
+            </ButtonLink>
           </div>
         </div>
       </div>
@@ -218,4 +219,3 @@ export default function OrderSuccessPage() {
     </Suspense>
   );
 }
-

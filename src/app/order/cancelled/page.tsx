@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ButtonLink } from '@/components/ui/Button';
 
 export default function OrderCancelledPage() {
   return (
@@ -71,16 +72,15 @@ export default function OrderCancelledPage() {
           </p>
 
           <div style={{ display: 'flex', gap: '.8rem', flexWrap: 'wrap' }}>
-            <Link href="/#pricing" className="btn-p" style={{ textDecoration: 'none', borderRadius: '3px', padding: '.8rem 1.2rem' }}>
+            <ButtonLink href="/#pricing" variant="primary" size="sm" style={{ borderRadius: '3px' }}>
               Try Again
-            </Link>
-            <Link href="/" className="btn-g" style={{ textDecoration: 'none', borderRadius: '3px', padding: '.8rem 1.2rem' }}>
+            </ButtonLink>
+            <ButtonLink href="/" variant="ghost" size="sm" style={{ borderRadius: '3px' }}>
               Back to Home
-            </Link>
+            </ButtonLink>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

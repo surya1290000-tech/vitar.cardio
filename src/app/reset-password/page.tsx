@@ -3,6 +3,28 @@ import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 
+type ResetForm = {
+  password: string;
+  confirm: string;
+};
+
+type ResetFormErrors = {
+  password?: string;
+  confirm?: string;
+};
+
+const validateResetForm = (form: ResetForm) => {
+  const errors: ResetFormErrors = {};
+
+  if (!form.password) errors.password = 'Password is required.';
+  else if (form.password.length < 8) errors.password = 'Use at least 8 characters.';
+
+  if (!form.confirm) errors.confirm = 'Please confirm your password.';
+  else if (form.password !== form.confirm) errors.confirm = 'Passwords do not match.';
+
+  return errors;
+};
+
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -13,13 +35,51 @@ function ResetPasswordForm() {
       ? 'Reset token looks invalid. Please request a new reset link.'
       : '';
 
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
+  const [form, setForm] = useState<ResetForm>({ password: '', confirm: '' });
+  const [fieldErrors, setFieldErrors] = useState<ResetFormErrors>({});
+  const [touched, setTouched] = useState<{ password: boolean; confirm: boolean }>({
+    password: false,
+    confirm: false,
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  const handleChange = (name: keyof ResetForm, value: string) => {
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      setFieldErrors(validateResetForm(next));
+      return next;
+    });
+    if (error) setError('');
+  };
+
+  const handleBlur = (name: keyof ResetForm) => {
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    setFieldErrors(validateResetForm(form));
+  };
+
+  const resolveInputStyle = (name: keyof ResetForm) => {
+    const hasError = touched[name] && Boolean(fieldErrors[name]);
+    const hasValue = form[name].length > 0;
+    const isValid = touched[name] && !fieldErrors[name] && hasValue;
+
+    return {
+      ...inputStyle,
+      border: hasError
+        ? '1px solid rgba(231,76,60,0.55)'
+        : isValid
+          ? '1px solid rgba(46,204,113,0.55)'
+          : inputStyle.border,
+      boxShadow: hasError
+        ? '0 0 0 2px rgba(231,76,60,0.15)'
+        : isValid
+          ? '0 0 0 2px rgba(46,204,113,0.12)'
+          : 'none',
+    } as React.CSSProperties;
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,22 +90,17 @@ function ResetPasswordForm() {
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-
-    if (password !== confirm) {
-      setError('Passwords do not match.');
-      return;
-    }
+    const errors = validateResetForm(form);
+    setFieldErrors(errors);
+    setTouched({ password: true, confirm: true });
+    if (Object.keys(errors).length > 0) return;
 
     setLoading(true);
     try {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password: form.password }),
       });
 
       const json = await res.json();
@@ -116,7 +171,7 @@ function ResetPasswordForm() {
                   color: '#2ECC71',
                 }}
               >
-                ✓
+                OK
               </div>
               <h1
                 style={{
@@ -128,9 +183,7 @@ function ResetPasswordForm() {
               >
                 Password updated
               </h1>
-              <p style={{ fontSize: '0.85rem', color: '#8A8A8E', lineHeight: '1.7' }}>
-                Redirecting you to sign in...
-              </p>
+              <p style={{ fontSize: '0.85rem', color: '#8A8A8E', lineHeight: '1.7' }}>Redirecting you to sign in...</p>
             </div>
           ) : (
             <>
@@ -185,41 +238,43 @@ function ResetPasswordForm() {
                     <div style={{ position: 'relative' }}>
                       <input
                         type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
+                        value={form.password}
+                        onChange={(e) => handleChange('password', e.target.value)}
+                        onBlur={() => handleBlur('password')}
                         placeholder="Min. 8 characters"
                         minLength={8}
                         required
-                        style={{ ...inputStyle, paddingRight: '5.5rem' }}
+                        style={{ ...resolveInputStyle('password'), paddingRight: '5.5rem' }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(v => !v)}
-                        style={toggleStyle}
-                      >
+                      <button type="button" onClick={() => setShowPassword((v) => !v)} style={toggleStyle}>
                         {showPassword ? 'Hide' : 'Show'}
                       </button>
                     </div>
+                    {touched.password && fieldErrors.password && <div style={fieldErrorStyle}>{fieldErrors.password}</div>}
+                    {touched.password && !fieldErrors.password && form.password.length > 0 && (
+                      <div style={fieldOkStyle}>Password length looks good.</div>
+                    )}
                   </div>
                   <div>
                     <label style={labelStyle}>Confirm Password</label>
                     <div style={{ position: 'relative' }}>
                       <input
                         type={showConfirm ? 'text' : 'password'}
-                        value={confirm}
-                        onChange={e => setConfirm(e.target.value)}
+                        value={form.confirm}
+                        onChange={(e) => handleChange('confirm', e.target.value)}
+                        onBlur={() => handleBlur('confirm')}
                         placeholder="Repeat your password"
                         required
-                        style={{ ...inputStyle, paddingRight: '5.5rem' }}
+                        style={{ ...resolveInputStyle('confirm'), paddingRight: '5.5rem' }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirm(v => !v)}
-                        style={toggleStyle}
-                      >
+                      <button type="button" onClick={() => setShowConfirm((v) => !v)} style={toggleStyle}>
                         {showConfirm ? 'Hide' : 'Show'}
                       </button>
                     </div>
+                    {touched.confirm && fieldErrors.confirm && <div style={fieldErrorStyle}>{fieldErrors.confirm}</div>}
+                    {touched.confirm && !fieldErrors.confirm && form.confirm.length > 0 && (
+                      <div style={fieldOkStyle}>Passwords match.</div>
+                    )}
                   </div>
                   <button
                     type="submit"
@@ -290,6 +345,20 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.9rem',
   outline: 'none',
   boxSizing: 'border-box',
+};
+
+const fieldErrorStyle: React.CSSProperties = {
+  marginTop: '0.45rem',
+  color: '#E74C3C',
+  fontSize: '0.74rem',
+  lineHeight: 1.4,
+};
+
+const fieldOkStyle: React.CSSProperties = {
+  marginTop: '0.45rem',
+  color: '#2ECC71',
+  fontSize: '0.74rem',
+  lineHeight: 1.4,
 };
 
 const toggleStyle: React.CSSProperties = {
