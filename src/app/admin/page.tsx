@@ -81,18 +81,92 @@ interface Reconciliation {
 
 type DateRange = 'all' | '24h' | '7d' | '30d';
 
+interface Device {
+  id: string;
+  user_id: string;
+  serial_number: string;
+  model: string;
+  status: string;
+  battery_level: number | null;
+  last_sync: string | null;
+}
+
+interface HealthReading {
+  id: number;
+  device_id: string;
+  user_id: string;
+  heart_rate: number | null;
+  spo2: number | null;
+  temperature: number | null;
+  systolic_bp: number | null;
+  diastolic_bp: number | null;
+  ai_risk_score: number | null;
+  recorded_at: string;
+}
+
+interface PaginationState {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+interface DeviceFilterState {
+  search: string;
+  status: string;
+}
+
+interface HealthFilterState {
+  hours: string;
+  minRisk: string;
+  deviceId: string;
+  userId: string;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [authed, setAuthed] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'overview' | 'users' | 'orders' | 'ops'>('overview');
+  const [tab, setTab] = useState<'overview' | 'users' | 'orders' | 'ops' | 'devices' | 'health'>('overview');
   const [users, setUsers] = useState<User[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [adminAuthLogs, setAdminAuthLogs] = useState<AdminAuthLog[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [healthReadings, setHealthReadings] = useState<HealthReading[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [devicePagination, setDevicePagination] = useState<PaginationState>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
+  const [healthPagination, setHealthPagination] = useState<PaginationState>({
+    page: 1,
+    limit: 30,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
+  const [deviceFilters, setDeviceFilters] = useState<DeviceFilterState>({
+    search: '',
+    status: 'all',
+  });
+  const [healthFilters, setHealthFilters] = useState<HealthFilterState>({
+    hours: '72',
+    minRisk: '',
+    deviceId: '',
+    userId: '',
+  });
   const [stats, setStats] = useState<Stats | null>(null);
   const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'authorized' | 'failed' | 'other'>('all');
@@ -119,6 +193,12 @@ export default function AdminPage() {
       setPayments([]);
       setAlerts([]);
       setAdminAuthLogs([]);
+      setDevices([]);
+      setHealthReadings([]);
+      setDevicePagination({ page: 1, limit: 20, total: 0, totalPages: 1, hasNextPage: false, hasPrevPage: false });
+      setHealthPagination({ page: 1, limit: 30, total: 0, totalPages: 1, hasNextPage: false, hasPrevPage: false });
+      setDeviceFilters({ search: '', status: 'all' });
+      setHealthFilters({ hours: '72', minRisk: '', deviceId: '', userId: '' });
       setStats(null);
       setReconciliation(null);
       setLoadError('');
@@ -183,7 +263,105 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
+
+    // Load paginated admin modules in parallel.
+    await Promise.all([loadDevices(1), loadHealthReadings(1)]);
   };
+
+  const loadDevices = async (page = 1, overrides?: DeviceFilterState) => {
+    setDevicesLoading(true);
+    try {
+      const filters = overrides ?? deviceFilters;
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(devicePagination.limit),
+      });
+      if (filters.search.trim()) params.set('search', filters.search.trim());
+      if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+
+      const res = await fetch(`/api/admin/devices?${params.toString()}`, {
+        credentials: 'include',
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setDevices(json.devices || []);
+        if (json.pagination) {
+          setDevicePagination(json.pagination);
+        }
+      } else if (res.status === 401) {
+        setAuthed(false);
+      }
+    } catch (err) {
+      console.error('Failed to load devices:', err);
+    } finally {
+      setDevicesLoading(false);
+    }
+  };
+
+  const loadHealthReadings = async (page = 1, overrides?: HealthFilterState) => {
+    setHealthLoading(true);
+    try {
+      const filters = overrides ?? healthFilters;
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(healthPagination.limit),
+        hours: String(Math.max(1, Number(filters.hours || 72))),
+      });
+      if (filters.minRisk.trim()) params.set('minRisk', filters.minRisk.trim());
+      if (filters.deviceId.trim()) params.set('deviceId', filters.deviceId.trim());
+      if (filters.userId.trim()) params.set('userId', filters.userId.trim());
+
+      const res = await fetch(`/api/admin/health-readings?${params.toString()}`, {
+        credentials: 'include',
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setHealthReadings(json.readings || []);
+        if (json.pagination) {
+          setHealthPagination(json.pagination);
+        }
+      } else if (res.status === 401) {
+        setAuthed(false);
+      }
+    } catch (err) {
+      console.error('Failed to load health readings:', err);
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  // Auto-apply devices filters with debounce while typing/changing status.
+  useEffect(() => {
+    if (!authed || tab !== 'devices') return;
+    const timer = setTimeout(() => {
+      void loadDevices(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [authed, tab, deviceFilters.search, deviceFilters.status]);
+
+  // Auto-apply health filters with debounce when inputs are valid.
+  useEffect(() => {
+    if (!authed || tab !== 'health') return;
+
+    const hours = Number(healthFilters.hours);
+    const minRisk = healthFilters.minRisk.trim();
+    const deviceId = healthFilters.deviceId.trim();
+    const userId = healthFilters.userId.trim();
+
+    const uuidRegex = /^[0-9a-fA-F-]{36}$/;
+    const validHours = Number.isFinite(hours) && hours > 0;
+    const validMinRisk =
+      !minRisk || (!Number.isNaN(Number(minRisk)) && Number(minRisk) >= 0 && Number(minRisk) <= 1);
+    const validDeviceId = !deviceId || uuidRegex.test(deviceId);
+    const validUserId = !userId || uuidRegex.test(userId);
+
+    if (!validHours || !validMinRisk || !validDeviceId || !validUserId) return;
+
+    const timer = setTimeout(() => {
+      void loadHealthReadings(1);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [authed, tab, healthFilters.hours, healthFilters.minRisk, healthFilters.deviceId, healthFilters.userId]);
 
   useEffect(() => {
     let active = true;
@@ -495,9 +673,10 @@ export default function AdminPage() {
             marginBottom: '2rem',
             borderBottom: '1px solid var(--border)',
             paddingBottom: '0',
+            overflowX: 'auto',
           }}
         >
-          {(['overview', 'users', 'orders', 'ops'] as const).map(t => (
+          {(['overview', 'users', 'orders', 'devices', 'health', 'ops'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -514,9 +693,10 @@ export default function AdminPage() {
                 fontWeight: tab === t ? 500 : 400,
                 letterSpacing: '0.05em',
                 marginBottom: '-1px',
+                whiteSpace: 'nowrap',
               }}
             >
-              {t}
+              {t === 'devices' ? '📱 Devices' : t === 'health' ? '❤️ Health Data' : t}
             </button>
           ))}
         </div>
@@ -1179,9 +1359,441 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {!loading && tab === 'devices' && (
+          <div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                gap: '1.5rem',
+                marginBottom: '2rem',
+              }}
+            >
+              <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.8rem' }}>
+                  Total Devices
+                </div>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.5rem', color: '#C0392B', lineHeight: 1 }}>
+                  {devicePagination.total}
+                </div>
+              </div>
+              <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.8rem' }}>
+                  Active Devices
+                </div>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.5rem', color: '#2ECC71', lineHeight: 1 }}>
+                  {devices.filter(d => d.status === 'online').length}
+                </div>
+              </div>
+              <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.8rem' }}>
+                  Health Readings
+                </div>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.5rem', color: '#F39C12', lineHeight: 1 }}>
+                  {healthPagination.total}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+              <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Registered Wearables ({devicePagination.total})
+                </h3>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void loadDevices(1);
+                  }}
+                  style={{ marginTop: '0.9rem', display: 'grid', gridTemplateColumns: '1.4fr 0.8fr auto auto', gap: '0.6rem' }}
+                >
+                  <input
+                    value={deviceFilters.search}
+                    onChange={(e) => setDeviceFilters((prev) => ({ ...prev, search: e.target.value }))}
+                    placeholder="Search serial/model/user/status"
+                    style={{
+                      background: 'var(--deep)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.8rem',
+                      padding: '0.5rem 0.7rem',
+                    }}
+                  />
+                  <select
+                    value={deviceFilters.status}
+                    onChange={(e) => setDeviceFilters((prev) => ({ ...prev, status: e.target.value }))}
+                    style={{
+                      background: 'var(--deep)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.8rem',
+                      padding: '0.5rem 0.7rem',
+                    }}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="online">Online</option>
+                    <option value="offline">Offline</option>
+                    <option value="connected">Connected</option>
+                    <option value="charging">Charging</option>
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={devicesLoading}
+                    style={{
+                      background: '#C0392B',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.75rem',
+                      padding: '0.45rem 0.7rem',
+                      cursor: devicesLoading ? 'not-allowed' : 'pointer',
+                      opacity: devicesLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {devicesLoading ? 'Applying...' : 'Apply'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={devicesLoading}
+                    onClick={() => {
+                      const defaults: DeviceFilterState = { search: '', status: 'all' };
+                      setDeviceFilters(defaults);
+                      void loadDevices(1, defaults);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--muted)',
+                      fontSize: '0.75rem',
+                      padding: '0.45rem 0.7rem',
+                      cursor: devicesLoading ? 'not-allowed' : 'pointer',
+                      opacity: devicesLoading ? 0.7 : 1,
+                    }}
+                  >
+                    Reset
+                  </button>
+                </form>
+              </div>
+              {devicesLoading && (
+                <div style={{ padding: '0.55rem 1.5rem', color: 'var(--muted)', fontSize: '0.76rem', borderBottom: '1px solid var(--border)' }}>
+                  Loading devices...
+                </div>
+              )}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Serial #', 'Model', 'Status', 'Battery', 'Last Sync'].map((col, i) => (
+                        <th key={i} style={{ padding: '1rem 1.5rem', textAlign: 'left', fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {devices.map((device, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '1rem 1.5rem', fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                          {device.serial_number}
+                        </td>
+                        <td style={{ padding: '1rem 1.5rem', fontSize: '0.85rem', textTransform: 'capitalize' }}>
+                          {device.model}
+                        </td>
+                        <td style={{ padding: '1rem 1.5rem' }}>
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '0.3rem 0.8rem',
+                              borderRadius: '20px',
+                              background: device.status === 'online' ? 'rgba(46,204,113,0.1)' : 'rgba(255,255,255,0.05)',
+                              color: device.status === 'online' ? '#2ECC71' : 'var(--muted)',
+                              border: `1px solid ${device.status === 'online' ? 'rgba(46,204,113,0.3)' : 'var(--border)'}`,
+                              textTransform: 'capitalize',
+                            }}
+                          >
+                            {device.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '1rem 1.5rem', fontSize: '0.85rem', color: device.battery_level !== null && device.battery_level < 20 ? '#E74C3C' : 'var(--white)' }}>
+                          {device.battery_level !== null ? `${device.battery_level}%` : 'N/A'}
+                        </td>
+                        <td style={{ padding: '1rem 1.5rem', fontSize: '0.78rem', color: 'var(--muted)' }}>
+                          {device.last_sync ? new Date(device.last_sync).toLocaleString().split(',')[0] : 'Never'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {devices.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '0.85rem', padding: '2rem 1.5rem' }}>No devices registered yet.</p>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+                <div style={{ color: 'var(--muted)', fontSize: '0.76rem' }}>
+                  Page {devicePagination.page} / {devicePagination.totalPages}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => loadDevices(devicePagination.page - 1)}
+                    disabled={!devicePagination.hasPrevPage || devicesLoading}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.74rem',
+                      padding: '0.4rem 0.65rem',
+                      cursor: devicePagination.hasPrevPage && !devicesLoading ? 'pointer' : 'not-allowed',
+                      opacity: devicePagination.hasPrevPage && !devicesLoading ? 1 : 0.65,
+                    }}
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadDevices(devicePagination.page + 1)}
+                    disabled={!devicePagination.hasNextPage || devicesLoading}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.74rem',
+                      padding: '0.4rem 0.65rem',
+                      cursor: devicePagination.hasNextPage && !devicesLoading ? 'pointer' : 'not-allowed',
+                      opacity: devicePagination.hasNextPage && !devicesLoading ? 1 : 0.65,
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && tab === 'health' && (
+          <div>
+            <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+              <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Recent Health Readings ({healthPagination.total})
+                </h3>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void loadHealthReadings(1);
+                  }}
+                  style={{ marginTop: '0.9rem', display: 'grid', gridTemplateColumns: '0.5fr 0.6fr 1fr 1fr auto auto', gap: '0.6rem' }}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    value={healthFilters.hours}
+                    onChange={(e) => setHealthFilters((prev) => ({ ...prev, hours: e.target.value }))}
+                    placeholder="Hours"
+                    style={{
+                      background: 'var(--deep)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.8rem',
+                      padding: '0.5rem 0.7rem',
+                    }}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step="0.01"
+                    value={healthFilters.minRisk}
+                    onChange={(e) => setHealthFilters((prev) => ({ ...prev, minRisk: e.target.value }))}
+                    placeholder="Min risk 0-1"
+                    style={{
+                      background: 'var(--deep)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.8rem',
+                      padding: '0.5rem 0.7rem',
+                    }}
+                  />
+                  <input
+                    value={healthFilters.deviceId}
+                    onChange={(e) => setHealthFilters((prev) => ({ ...prev, deviceId: e.target.value }))}
+                    placeholder="Filter by device UUID"
+                    style={{
+                      background: 'var(--deep)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.8rem',
+                      padding: '0.5rem 0.7rem',
+                    }}
+                  />
+                  <input
+                    value={healthFilters.userId}
+                    onChange={(e) => setHealthFilters((prev) => ({ ...prev, userId: e.target.value }))}
+                    placeholder="Filter by user UUID"
+                    style={{
+                      background: 'var(--deep)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.8rem',
+                      padding: '0.5rem 0.7rem',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={healthLoading}
+                    style={{
+                      background: '#C0392B',
+                      border: 'none',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.75rem',
+                      padding: '0.45rem 0.7rem',
+                      cursor: healthLoading ? 'not-allowed' : 'pointer',
+                      opacity: healthLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {healthLoading ? 'Applying...' : 'Apply'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={healthLoading}
+                    onClick={() => {
+                      const defaults: HealthFilterState = { hours: '72', minRisk: '', deviceId: '', userId: '' };
+                      setHealthFilters(defaults);
+                      void loadHealthReadings(1, defaults);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--border)',
+                      borderRadius: '4px',
+                      color: 'var(--muted)',
+                      fontSize: '0.75rem',
+                      padding: '0.45rem 0.7rem',
+                      cursor: healthLoading ? 'not-allowed' : 'pointer',
+                      opacity: healthLoading ? 0.7 : 1,
+                    }}
+                  >
+                    Reset
+                  </button>
+                </form>
+              </div>
+              {healthLoading && (
+                <div style={{ padding: '0.55rem 1.5rem', color: 'var(--muted)', fontSize: '0.76rem', borderBottom: '1px solid var(--border)' }}>
+                  Loading health readings...
+                </div>
+              )}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Timestamp', 'Heart Rate', 'SpO2', 'Temp', 'SystolicBP', 'AI Risk', 'Status'].map((col, i) => (
+                        <th key={i} style={{ padding: '1rem 1.5rem', textAlign: 'left', fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {healthReadings.map((reading, i) => {
+                      const isRiskHigh = (reading.ai_risk_score ?? 0) > 0.75;
+                      const isOxygenLow = (reading.spo2 ?? 0) < 90;
+                      const isHRAbNormal = (reading.heart_rate ?? 0) > 120 || (reading.heart_rate ?? 0) < 40;
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                            {new Date(reading.recorded_at).toLocaleString().split(',')[0]}
+                          </td>
+                          <td style={{ padding: '1rem 1.5rem', fontSize: '0.85rem', color: isHRAbNormal ? '#E74C3C' : 'var(--white)' }}>
+                            {reading.heart_rate ?? 'N/A'} <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>bpm</span>
+                          </td>
+                          <td style={{ padding: '1rem 1.5rem', fontSize: '0.85rem', color: isOxygenLow ? '#E74C3C' : 'var(--white)' }}>
+                            {reading.spo2 ?? 'N/A'}<span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>%</span>
+                          </td>
+                          <td style={{ padding: '1rem 1.5rem', fontSize: '0.85rem' }}>
+                            {reading.temperature ?? 'N/A'} <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>C</span>
+                          </td>
+                          <td style={{ padding: '1rem 1.5rem', fontSize: '0.85rem' }}>
+                            {reading.systolic_bp ?? 'N/A'} <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>mmHg</span>
+                          </td>
+                          <td style={{ padding: '1rem 1.5rem', fontSize: '0.85rem', color: isRiskHigh ? '#E74C3C' : 'var(--white)' }}>
+                            {reading.ai_risk_score !== null ? (reading.ai_risk_score * 100).toFixed(1) : 'N/A'} <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>%</span>
+                          </td>
+                          <td style={{ padding: '1rem 1.5rem' }}>
+                            <span
+                              style={{
+                                fontSize: '0.68rem',
+                                padding: '0.3rem 0.8rem',
+                                borderRadius: '20px',
+                                background: isRiskHigh || isOxygenLow ? 'rgba(231,76,60,0.1)' : 'rgba(46,204,113,0.1)',
+                                color: isRiskHigh || isOxygenLow ? '#E74C3C' : '#2ECC71',
+                                border: `1px solid ${isRiskHigh || isOxygenLow ? 'rgba(231,76,60,0.3)' : 'rgba(46,204,113,0.3)'}`,
+                              }}
+                            >
+                              {isRiskHigh || isOxygenLow ? 'Alert' : 'Normal'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {healthReadings.length === 0 && <p style={{ color: 'var(--muted)', fontSize: '0.85rem', padding: '2rem 1.5rem' }}>No health readings yet.</p>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem', padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
+                <div style={{ color: 'var(--muted)', fontSize: '0.76rem' }}>
+                  Page {healthPagination.page} / {healthPagination.totalPages}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => loadHealthReadings(healthPagination.page - 1)}
+                    disabled={!healthPagination.hasPrevPage || healthLoading}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.74rem',
+                      padding: '0.4rem 0.65rem',
+                      cursor: healthPagination.hasPrevPage && !healthLoading ? 'pointer' : 'not-allowed',
+                      opacity: healthPagination.hasPrevPage && !healthLoading ? 1 : 0.65,
+                    }}
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => loadHealthReadings(healthPagination.page + 1)}
+                    disabled={!healthPagination.hasNextPage || healthLoading}
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: '4px',
+                      color: 'var(--white)',
+                      fontSize: '0.74rem',
+                      padding: '0.4rem 0.65rem',
+                      cursor: healthPagination.hasNextPage && !healthLoading ? 'pointer' : 'not-allowed',
+                      opacity: healthPagination.hasNextPage && !healthLoading ? 1 : 0.65,
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-

@@ -1,4 +1,4 @@
--- ================================================================
+-- =============================================================
 -- VITAR DATABASE SETUP
 -- Run this SQL in your Neon dashboard → SQL Editor
 -- ================================================================
@@ -98,15 +98,22 @@ CREATE TABLE IF NOT EXISTS health_readings (
   recorded_at     TIMESTAMP NOT NULL DEFAULT NOW(),
   heart_rate      INTEGER,
   spo2            DECIMAL(5,2),
+  temperature     DECIMAL(5,2),
+  respiratory_rate INTEGER,
+  systolic_bp     INTEGER,
+  diastolic_bp    INTEGER,
   hrv_ms          DECIMAL(8,2),
   ecg_data        JSONB,
   motion_x        DECIMAL(8,4),
   motion_y        DECIMAL(8,4),
   motion_z        DECIMAL(8,4),
-  ai_risk_score   DECIMAL(5,4) CHECK (ai_risk_score BETWEEN 0 AND 1),
-  anomaly_flags   TEXT[] DEFAULT '{}'
+  ai_risk_score   DECIMAL(5,2),
+  anomaly_flags   TEXT[] DEFAULT '{}',
+  notes           TEXT,
+  created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_health_user_time ON health_readings(user_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_health_device_time ON health_readings(device_id, recorded_at DESC);
 
 -- ── ALERTS ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS alerts (
@@ -115,6 +122,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   device_id        UUID REFERENCES devices(id),
   alert_type       VARCHAR(50) NOT NULL,
   severity         VARCHAR(20) NOT NULL,
+  message          TEXT,
   status           VARCHAR(30) NOT NULL DEFAULT 'pending',
   location_lat     DECIMAL(10,8),
   location_lng     DECIMAL(11,8),
@@ -124,6 +132,8 @@ CREATE TABLE IF NOT EXISTS alerts (
   created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
   resolved_at      TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_alerts_user_time ON alerts(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity, status);
 
 -- ── ORDERS ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS orders (
@@ -177,6 +187,41 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at             TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+-- ── CUSTOMER SUPPORT ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subject      VARCHAR(200) NOT NULL,
+  category     VARCHAR(40) NOT NULL DEFAULT 'general',
+  priority     VARCHAR(20) NOT NULL DEFAULT 'normal',
+  description  TEXT NOT NULL,
+  status       VARCHAR(30) NOT NULL DEFAULT 'open',
+  created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user_time ON support_tickets(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS support_messages (
+  id          BIGSERIAL PRIMARY KEY,
+  ticket_id   UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  sender_type VARCHAR(20) NOT NULL,
+  message     TEXT NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_time ON support_messages(ticket_id, created_at ASC);
+
+-- ── HEALTH ASSISTANT CHAT ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS health_assistant_chats (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role        VARCHAR(20) NOT NULL,
+  message     TEXT NOT NULL,
+  context     JSONB,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_user_time ON health_assistant_chats(user_id, created_at DESC);
+
 -- ── NOTIFICATION LOG ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notification_log (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -214,7 +259,22 @@ CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_created_at ON stripe_webhoo
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email_notifications BOOLEAN NOT NULL DEFAULT true;
 
+ALTER TABLE health_readings
+  ADD COLUMN IF NOT EXISTS temperature DECIMAL(5,2),
+  ADD COLUMN IF NOT EXISTS respiratory_rate INTEGER,
+  ADD COLUMN IF NOT EXISTS systolic_bp INTEGER,
+  ADD COLUMN IF NOT EXISTS diastolic_bp INTEGER,
+  ADD COLUMN IF NOT EXISTS notes TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+ALTER TABLE alerts
+  ADD COLUMN IF NOT EXISTS message TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_health_device_time ON health_readings(device_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_user_time ON alerts(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity, status);
+
 -- ================================================================
 -- ALL TABLES CREATED SUCCESSFULLY
--- Now go back to your .env.local and paste your Neon connection string
+-- Database setup complete! All tables are ready to use.
 -- ================================================================

@@ -94,6 +94,11 @@ export default function Navbar() {
             <Link href="/dashboard" className={pathname.startsWith('/dashboard') ? 'active' : ''} onClick={() => setMenuOpen(false)} aria-current={pathname.startsWith('/dashboard') ? 'page' : undefined}>Dashboard</Link>
           </li>
         )}
+        {isAuthenticated && (
+          <li>
+            <Link href="/care-center" className={pathname.startsWith('/care-center') ? 'active' : ''} onClick={() => setMenuOpen(false)} aria-current={pathname.startsWith('/care-center') ? 'page' : undefined}>Care</Link>
+          </li>
+        )}
       </ul>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -104,6 +109,9 @@ export default function Navbar() {
             </span>
             <ButtonLink href="/dashboard" variant="neon" size="sm" className="neon-cta-nav">
               Dashboard
+            </ButtonLink>
+            <ButtonLink href="/care-center" variant="ghost" size="sm">
+              Care Center
             </ButtonLink>
             <Button type="button" variant="ghost" size="sm" onClick={logout}>
               Sign Out

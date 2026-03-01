@@ -14,6 +14,7 @@ import Testimonials from '@/components/landing/Testimonials';
 import AuthDashboard from '@/components/landing/AuthDashboard';
 import AboutSection from '@/components/landing/AboutSection';
 import CTABanner from '@/components/landing/CTABanner';
+import CareFinalSection from '@/components/landing/CareFinalSection';
 import Footer from '@/components/layout/Footer';
 import ClientScripts from '@/components/ui/ClientScripts';
 
@@ -37,6 +38,7 @@ export default function Home() {
         <AuthDashboard />
         <AboutSection />
         <CTABanner />
+        <CareFinalSection />
       </main>
       <Footer />
       <ClientScripts />

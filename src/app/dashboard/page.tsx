@@ -62,6 +62,28 @@ interface UserProfile {
   } | null;
 }
 
+interface EmergencyContact {
+  id: string;
+  name: string;
+  relationship: string | null;
+  phone: string;
+  email: string | null;
+  notifySms: boolean;
+  notifyPush: boolean;
+  priority: number;
+}
+
+interface MedicalProfile {
+  id: string;
+  bloodType: string | null;
+  allergies: string[];
+  medications: string[];
+  conditions: string[];
+  physicianName: string | null;
+  physicianPhone: string | null;
+  updatedAt?: string;
+}
+
 export default function DashboardPage() {
   const { user, isAuthenticated, accessToken, setUser } = useAuthStore();
   const { logout } = useLogout();
@@ -103,6 +125,36 @@ export default function DashboardPage() {
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [orderSearch, setOrderSearch] = useState('');
   const [orderPage, setOrderPage] = useState(1);
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsSaving, setContactsSaving] = useState(false);
+  const [contactsError, setContactsError] = useState('');
+  const [contactsSuccess, setContactsSuccess] = useState('');
+  const [contactActionLoadingId, setContactActionLoadingId] = useState<string | null>(null);
+  const [contactForm, setContactForm] = useState({ name: '', relationship: '', phone: '', email: '' });
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [editContactForm, setEditContactForm] = useState({
+    name: '',
+    relationship: '',
+    phone: '',
+    email: '',
+    priority: 1,
+    notifySms: true,
+    notifyPush: true,
+  });
+  const [medicalProfile, setMedicalProfile] = useState<MedicalProfile | null>(null);
+  const [medicalProfileLoading, setMedicalProfileLoading] = useState(false);
+  const [medicalProfileSaving, setMedicalProfileSaving] = useState(false);
+  const [medicalProfileError, setMedicalProfileError] = useState('');
+  const [medicalProfileSuccess, setMedicalProfileSuccess] = useState('');
+  const [medicalProfileForm, setMedicalProfileForm] = useState({
+    bloodType: '',
+    allergies: '',
+    medications: '',
+    conditions: '',
+    physicianName: '',
+    physicianPhone: '',
+  });
 
   const [demoDevice, setDemoDevice] = useState<Device>({
     id: 'demo-device',
@@ -125,7 +177,7 @@ export default function DashboardPage() {
 
   const deviceColumns = ['Serial', 'Model', 'Status', 'Battery', 'Last Sync', 'Action'] as const;
   const alertColumns = ['Type', 'Severity', 'Status', 'Created', 'Action'] as const;
-  const orderColumns = ['Order #', 'Device', 'Status', 'Total', 'Date'] as const;
+  const orderColumns = ['Order #', 'Device', 'Status', 'Total', 'Date', 'Actions'] as const;
 
   const effectiveDevices = useMemo(() => (demoMode && devices.length === 0 ? [demoDevice] : devices), [demoMode, devices, demoDevice]);
   const effectiveReading = useMemo(() => (demoMode && !latestReading ? demoReading : latestReading), [demoMode, latestReading, demoReading]);
@@ -161,6 +213,11 @@ export default function DashboardPage() {
         profile.lastName !== profileForm.lastName.trim() ||
         (profile.phone ?? '') !== profileForm.phone.trim())
   );
+  const parseCsvList = (raw: string) =>
+    raw
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('vitar-demo-mode');
@@ -245,6 +302,23 @@ export default function DashboardPage() {
 
     if (active) setOrders(Array.isArray(ordersJson.orders) ? ordersJson.orders : []);
   }, []);
+
+  const handleCopyOrderDetails = async (order: Order) => {
+    const lines = [
+      `Order: ${order.order_number}`,
+      `Device: VITAR ${order.device_model}`,
+      `Status: ${order.status}`,
+      `Amount: $${((order.total ?? 0) / 100).toFixed(2)} ${order.currency?.toUpperCase()}`,
+      `Created: ${new Date(order.created_at).toLocaleString('en-IN')}`,
+      `Stripe Session: ${order.stripe_session_id ?? 'N/A'}`,
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      showToast({ type: 'success', title: 'Order Details Copied' });
+    } catch {
+      showToast({ type: 'error', title: 'Copy Failed', message: 'Could not copy order details.' });
+    }
+  };
 
   const fetchHealthData = useCallback(async (token: string, active = true) => {
     const [devicesRes, readingsRes] = await Promise.all([
@@ -472,6 +546,266 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchEmergencyContacts = useCallback(async (token: string, active = true) => {
+    const res = await fetch('/api/emergency-contacts', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      if (active) setContactsError(json?.error || 'Failed to load emergency contacts.');
+      return;
+    }
+    if (active) setEmergencyContacts(Array.isArray(json?.contacts) ? json.contacts : []);
+  }, []);
+
+  const fetchMedicalProfile = useCallback(async (token: string, active = true) => {
+    const res = await fetch('/api/medical-profile', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      if (active) setMedicalProfileError(json?.error || 'Failed to load medical profile.');
+      return;
+    }
+    if (!active) return;
+    const profileData = (json?.profile ?? null) as MedicalProfile | null;
+    setMedicalProfile(profileData);
+    setMedicalProfileForm({
+      bloodType: profileData?.bloodType ?? '',
+      allergies: Array.isArray(profileData?.allergies) ? profileData!.allergies.join(', ') : '',
+      medications: Array.isArray(profileData?.medications) ? profileData!.medications.join(', ') : '',
+      conditions: Array.isArray(profileData?.conditions) ? profileData!.conditions.join(', ') : '',
+      physicianName: profileData?.physicianName ?? '',
+      physicianPhone: profileData?.physicianPhone ?? '',
+    });
+  }, []);
+
+  const handleAddEmergencyContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContactsError('');
+    setContactsSuccess('');
+    const payload = {
+      name: contactForm.name.trim(),
+      relationship: contactForm.relationship.trim() || null,
+      phone: contactForm.phone.trim(),
+      email: contactForm.email.trim() || null,
+      notifySms: true,
+      notifyPush: true,
+      priority: 1,
+    };
+
+    if (!payload.name || !payload.phone) {
+      setContactsError('Contact name and phone are required.');
+      return;
+    }
+
+    setContactsSaving(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setContactsError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
+        return;
+      }
+
+      const res = await fetch('/api/emergency-contacts', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setContactsError(json?.error || 'Failed to add emergency contact.');
+        showToast({ type: 'error', title: 'Contact Add Failed', message: json?.error || 'Failed to add emergency contact.' });
+        return;
+      }
+
+      setContactForm({ name: '', relationship: '', phone: '', email: '' });
+      setEditingContactId(null);
+      showToast({ type: 'success', title: 'Emergency Contact Added' });
+      setContactsSuccess('Emergency contact added.');
+      await fetchEmergencyContacts(token);
+    } catch {
+      setContactsError('Network error while adding emergency contact.');
+      showToast({ type: 'error', title: 'Contact Add Failed', message: 'Network error while adding emergency contact.' });
+    } finally {
+      setContactsSaving(false);
+    }
+  };
+
+  const handleDeleteEmergencyContact = async (id: string) => {
+    setContactActionLoadingId(id);
+    setContactsError('');
+    setContactsSuccess('');
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setContactsError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
+        return;
+      }
+
+      const res = await fetch('/api/emergency-contacts', {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setContactsError(json?.error || 'Failed to delete emergency contact.');
+        showToast({ type: 'error', title: 'Delete Failed', message: json?.error || 'Failed to delete emergency contact.' });
+        return;
+      }
+
+      showToast({ type: 'success', title: 'Emergency Contact Deleted' });
+      setContactsSuccess('Emergency contact removed.');
+      if (editingContactId === id) {
+        setEditingContactId(null);
+      }
+      await fetchEmergencyContacts(token);
+    } catch {
+      setContactsError('Network error while deleting emergency contact.');
+      showToast({ type: 'error', title: 'Delete Failed', message: 'Network error while deleting emergency contact.' });
+    } finally {
+      setContactActionLoadingId(null);
+    }
+  };
+
+  const startEditEmergencyContact = (contact: EmergencyContact) => {
+    setContactsError('');
+    setContactsSuccess('');
+    setEditingContactId(contact.id);
+    setEditContactForm({
+      name: contact.name,
+      relationship: contact.relationship ?? '',
+      phone: contact.phone,
+      email: contact.email ?? '',
+      priority: contact.priority,
+      notifySms: contact.notifySms,
+      notifyPush: contact.notifyPush,
+    });
+  };
+
+  const cancelEditEmergencyContact = () => {
+    setEditingContactId(null);
+  };
+
+  const handleSaveEmergencyContact = async (id: string) => {
+    setContactsError('');
+    setContactsSuccess('');
+
+    const payload = {
+      id,
+      name: editContactForm.name.trim(),
+      relationship: editContactForm.relationship.trim() || null,
+      phone: editContactForm.phone.trim(),
+      email: editContactForm.email.trim() || null,
+      priority: editContactForm.priority,
+      notifySms: editContactForm.notifySms,
+      notifyPush: editContactForm.notifyPush,
+    };
+
+    if (!payload.name || !payload.phone) {
+      setContactsError('Contact name and phone are required.');
+      return;
+    }
+
+    if (payload.priority < 1 || payload.priority > 10) {
+      setContactsError('Priority must be between 1 and 10.');
+      return;
+    }
+
+    setContactActionLoadingId(id);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setContactsError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
+        return;
+      }
+
+      const res = await fetch('/api/emergency-contacts', {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setContactsError(json?.error || 'Failed to update emergency contact.');
+        showToast({ type: 'error', title: 'Update Failed', message: json?.error || 'Failed to update emergency contact.' });
+        return;
+      }
+
+      showToast({ type: 'success', title: 'Emergency Contact Updated' });
+      setContactsSuccess('Emergency contact updated.');
+      setEditingContactId(null);
+      await fetchEmergencyContacts(token);
+    } catch {
+      setContactsError('Network error while updating emergency contact.');
+      showToast({ type: 'error', title: 'Update Failed', message: 'Network error while updating emergency contact.' });
+    } finally {
+      setContactActionLoadingId(null);
+    }
+  };
+
+  const handleSaveMedicalProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMedicalProfileError('');
+    setMedicalProfileSuccess('');
+
+    setMedicalProfileSaving(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setMedicalProfileError('Session expired. Please sign in again.');
+        showToast({ type: 'error', title: 'Session Expired', message: 'Please sign in again.' });
+        return;
+      }
+
+      const payload = {
+        bloodType: medicalProfileForm.bloodType.trim() || null,
+        allergies: parseCsvList(medicalProfileForm.allergies),
+        medications: parseCsvList(medicalProfileForm.medications),
+        conditions: parseCsvList(medicalProfileForm.conditions),
+        physicianName: medicalProfileForm.physicianName.trim() || null,
+        physicianPhone: medicalProfileForm.physicianPhone.trim() || null,
+      };
+
+      const res = await fetch('/api/medical-profile', {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setMedicalProfileError(json?.error || 'Failed to update medical profile.');
+        showToast({ type: 'error', title: 'Medical Profile Failed', message: json?.error || 'Failed to update medical profile.' });
+        return;
+      }
+
+      setMedicalProfile((json?.profile ?? null) as MedicalProfile | null);
+      setMedicalProfileSuccess('Medical profile updated.');
+      showToast({ type: 'success', title: 'Medical Profile Updated' });
+    } catch {
+      setMedicalProfileError('Network error while updating medical profile.');
+      showToast({ type: 'error', title: 'Medical Profile Failed', message: 'Network error while updating medical profile.' });
+    } finally {
+      setMedicalProfileSaving(false);
+    }
+  };
+
   const triggerTestAlert = async () => {
     setAlertsInfo('');
     setAlertsError('');
@@ -665,10 +999,14 @@ export default function DashboardPage() {
       setHealthLoading(true);
       setAlertsLoading(true);
       setProfileLoading(true);
+      setContactsLoading(true);
+      setMedicalProfileLoading(true);
       setOrdersError('');
       setHealthError('');
       setAlertsError('');
       setProfileError('');
+      setContactsError('');
+      setMedicalProfileError('');
 
       try {
         const token = await getAccessToken();
@@ -682,12 +1020,15 @@ export default function DashboardPage() {
         }
 
         await Promise.all([fetchOrders(token, active), fetchHealthData(token, active), fetchAlerts(token, active), fetchProfile(token, active)]);
+        await Promise.all([fetchEmergencyContacts(token, active), fetchMedicalProfile(token, active)]);
       } catch {
         if (active) {
           setOrdersError('Network error while loading orders.');
           setHealthError('Network error while loading health data.');
           setAlertsError('Network error while loading alerts.');
           setProfileError('Network error while loading profile.');
+          setContactsError('Network error while loading emergency contacts.');
+          setMedicalProfileError('Network error while loading medical profile.');
         }
       } finally {
         if (active) {
@@ -695,6 +1036,8 @@ export default function DashboardPage() {
           setHealthLoading(false);
           setAlertsLoading(false);
           setProfileLoading(false);
+          setContactsLoading(false);
+          setMedicalProfileLoading(false);
         }
       }
     };
@@ -703,7 +1046,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [isAuthenticated, user, getAccessToken, fetchOrders, fetchHealthData, fetchAlerts, fetchProfile]);
+  }, [isAuthenticated, user, getAccessToken, fetchOrders, fetchHealthData, fetchAlerts, fetchProfile, fetchEmergencyContacts, fetchMedicalProfile]);
 
   if (!user) return null;
 
@@ -948,6 +1291,343 @@ export default function DashboardPage() {
               Order a Device
             </Link>
           )}
+        </div>
+
+        <div
+          style={{
+            marginTop: '2rem',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '1rem',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--graphite)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              padding: '1.5rem',
+            }}
+          >
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+              Emergency Contacts
+            </div>
+
+            <form onSubmit={handleAddEmergencyContact} style={{ display: 'grid', gap: '0.6rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                <input
+                  className="f-inp"
+                  placeholder="Name"
+                  value={contactForm.name}
+                  onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+                <input
+                  className="f-inp"
+                  placeholder="Relationship"
+                  value={contactForm.relationship}
+                  onChange={(e) => setContactForm((prev) => ({ ...prev, relationship: e.target.value }))}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                <input
+                  className="f-inp"
+                  placeholder="Phone"
+                  value={contactForm.phone}
+                  onChange={(e) => setContactForm((prev) => ({ ...prev, phone: e.target.value }))}
+                />
+                <input
+                  className="f-inp"
+                  placeholder="Email (optional)"
+                  value={contactForm.email}
+                  onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={contactsSaving}
+                style={{
+                  background: '#C0392B',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: 'var(--white)',
+                  fontSize: '0.76rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  padding: '0.55rem 0.75rem',
+                  width: 'fit-content',
+                  cursor: contactsSaving ? 'not-allowed' : 'pointer',
+                  opacity: contactsSaving ? 0.7 : 1,
+                }}
+              >
+                {contactsSaving ? 'Adding...' : 'Add Contact'}
+              </button>
+            </form>
+
+            {contactsError && <div style={{ color: '#E74C3C', fontSize: '0.78rem', marginBottom: '0.6rem' }}>{contactsError}</div>}
+            {contactsSuccess && <div style={{ color: '#2ECC71', fontSize: '0.78rem', marginBottom: '0.6rem' }}>{contactsSuccess}</div>}
+
+            {contactsLoading ? (
+              <div className="skeleton-stack">
+                <div className="skeleton-line long" />
+                <div className="skeleton-line mid" />
+              </div>
+            ) : emergencyContacts.length === 0 ? (
+              <div style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>No emergency contacts added yet.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.55rem' }}>
+                {emergencyContacts.map((contact) => (
+                  <div
+                    key={contact.id}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      padding: '0.65rem 0.75rem',
+                      display: 'grid',
+                      gap: '0.65rem',
+                    }}
+                  >
+                    {editingContactId === contact.id ? (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.55rem' }}>
+                          <input
+                            className="f-inp"
+                            value={editContactForm.name}
+                            onChange={(e) => setEditContactForm((prev) => ({ ...prev, name: e.target.value }))}
+                          />
+                          <input
+                            className="f-inp"
+                            value={editContactForm.relationship}
+                            onChange={(e) => setEditContactForm((prev) => ({ ...prev, relationship: e.target.value }))}
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.55rem' }}>
+                          <input
+                            className="f-inp"
+                            value={editContactForm.phone}
+                            onChange={(e) => setEditContactForm((prev) => ({ ...prev, phone: e.target.value }))}
+                          />
+                          <input
+                            className="f-inp"
+                            value={editContactForm.email}
+                            onChange={(e) => setEditContactForm((prev) => ({ ...prev, email: e.target.value }))}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.8rem', alignItems: 'center' }}>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.74rem', color: 'var(--muted)' }}>
+                            Priority
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={editContactForm.priority}
+                              onChange={(e) =>
+                                setEditContactForm((prev) => ({
+                                  ...prev,
+                                  priority: Number(e.target.value || 1),
+                                }))
+                              }
+                              style={{
+                                width: '64px',
+                                background: 'var(--deep)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '4px',
+                                color: 'var(--white)',
+                                fontSize: '0.74rem',
+                                padding: '0.25rem 0.35rem',
+                              }}
+                            />
+                          </label>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.74rem', color: 'var(--muted)' }}>
+                            <input
+                              type="checkbox"
+                              checked={editContactForm.notifySms}
+                              onChange={(e) => setEditContactForm((prev) => ({ ...prev, notifySms: e.target.checked }))}
+                            />
+                            SMS
+                          </label>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.74rem', color: 'var(--muted)' }}>
+                            <input
+                              type="checkbox"
+                              checked={editContactForm.notifyPush}
+                              onChange={(e) => setEditContactForm((prev) => ({ ...prev, notifyPush: e.target.checked }))}
+                            />
+                            Push
+                          </label>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            onClick={cancelEditEmergencyContact}
+                            disabled={contactActionLoadingId === contact.id}
+                            style={{
+                              background: 'transparent',
+                              border: '1px solid var(--border)',
+                              borderRadius: '4px',
+                              color: 'var(--muted)',
+                              fontSize: '0.72rem',
+                              padding: '0.3rem 0.55rem',
+                              cursor: contactActionLoadingId === contact.id ? 'not-allowed' : 'pointer',
+                              opacity: contactActionLoadingId === contact.id ? 0.7 : 1,
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEmergencyContact(contact.id)}
+                            disabled={contactActionLoadingId === contact.id}
+                            style={{
+                              background: 'rgba(46,204,113,0.14)',
+                              border: '1px solid rgba(46,204,113,0.35)',
+                              borderRadius: '4px',
+                              color: '#2ECC71',
+                              fontSize: '0.72rem',
+                              padding: '0.3rem 0.55rem',
+                              cursor: contactActionLoadingId === contact.id ? 'not-allowed' : 'pointer',
+                              opacity: contactActionLoadingId === contact.id ? 0.7 : 1,
+                            }}
+                          >
+                            {contactActionLoadingId === contact.id ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.8rem' }}>
+                        <div>
+                          <div style={{ fontSize: '0.82rem' }}>{contact.name}</div>
+                          <div style={{ fontSize: '0.73rem', color: 'var(--muted)' }}>
+                            {contact.relationship || 'Contact'} • {contact.phone}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+                            Priority {contact.priority} | SMS {contact.notifySms ? 'On' : 'Off'} | Push {contact.notifyPush ? 'On' : 'Off'}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.45rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => startEditEmergencyContact(contact)}
+                            disabled={contactActionLoadingId === contact.id}
+                            style={{
+                              background: 'rgba(255,255,255,0.06)',
+                              border: '1px solid rgba(255,255,255,0.16)',
+                              borderRadius: '4px',
+                              color: 'var(--white)',
+                              fontSize: '0.72rem',
+                              padding: '0.3rem 0.55rem',
+                              cursor: contactActionLoadingId === contact.id ? 'not-allowed' : 'pointer',
+                              opacity: contactActionLoadingId === contact.id ? 0.7 : 1,
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEmergencyContact(contact.id)}
+                            disabled={contactActionLoadingId === contact.id}
+                            style={{
+                              background: 'rgba(231,76,60,0.1)',
+                              border: '1px solid rgba(231,76,60,0.28)',
+                              borderRadius: '4px',
+                              color: '#E74C3C',
+                              fontSize: '0.72rem',
+                              padding: '0.3rem 0.55rem',
+                              cursor: contactActionLoadingId === contact.id ? 'not-allowed' : 'pointer',
+                              opacity: contactActionLoadingId === contact.id ? 0.7 : 1,
+                            }}
+                          >
+                            {contactActionLoadingId === contact.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              background: 'var(--graphite)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              padding: '1.5rem',
+            }}
+          >
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+              Medical Profile
+            </div>
+
+            <form onSubmit={handleSaveMedicalProfile} style={{ display: 'grid', gap: '0.6rem' }}>
+              <input
+                className="f-inp"
+                placeholder="Blood type (e.g., O+)"
+                value={medicalProfileForm.bloodType}
+                onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, bloodType: e.target.value }))}
+              />
+              <input
+                className="f-inp"
+                placeholder="Allergies (comma separated)"
+                value={medicalProfileForm.allergies}
+                onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, allergies: e.target.value }))}
+              />
+              <input
+                className="f-inp"
+                placeholder="Medications (comma separated)"
+                value={medicalProfileForm.medications}
+                onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, medications: e.target.value }))}
+              />
+              <input
+                className="f-inp"
+                placeholder="Conditions (comma separated)"
+                value={medicalProfileForm.conditions}
+                onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, conditions: e.target.value }))}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                <input
+                  className="f-inp"
+                  placeholder="Physician name"
+                  value={medicalProfileForm.physicianName}
+                  onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, physicianName: e.target.value }))}
+                />
+                <input
+                  className="f-inp"
+                  placeholder="Physician phone"
+                  value={medicalProfileForm.physicianPhone}
+                  onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, physicianPhone: e.target.value }))}
+                />
+              </div>
+
+              {medicalProfileError && <div style={{ color: '#E74C3C', fontSize: '0.78rem' }}>{medicalProfileError}</div>}
+              {medicalProfileSuccess && <div style={{ color: '#2ECC71', fontSize: '0.78rem' }}>{medicalProfileSuccess}</div>}
+              {medicalProfileLoading && <div style={{ color: 'var(--muted)', fontSize: '0.76rem' }}>Loading profile...</div>}
+              {!medicalProfileLoading && medicalProfile && (
+                <div style={{ color: 'var(--muted)', fontSize: '0.74rem' }}>
+                  Last updated: {medicalProfile.updatedAt ? new Date(medicalProfile.updatedAt).toLocaleDateString('en-IN') : 'recently'}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={medicalProfileSaving}
+                style={{
+                  background: '#C0392B',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: 'var(--white)',
+                  fontSize: '0.76rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  padding: '0.55rem 0.75rem',
+                  width: 'fit-content',
+                  cursor: medicalProfileSaving ? 'not-allowed' : 'pointer',
+                  opacity: medicalProfileSaving ? 0.7 : 1,
+                }}
+              >
+                {medicalProfileSaving ? 'Saving...' : 'Save Medical Profile'}
+              </button>
+            </form>
+          </div>
         </div>
 
         <div
@@ -1604,6 +2284,23 @@ export default function DashboardPage() {
                       <td data-label={orderColumns[4]} style={{ padding: '0.9rem 0.2rem', color: 'var(--muted)', fontSize: '0.78rem' }}>
                         {new Date(o.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </td>
+                      <td data-label={orderColumns[5]} style={{ padding: '0.9rem 0.2rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyOrderDetails(o)}
+                          style={{
+                            background: 'rgba(255,255,255,0.06)',
+                            border: '1px solid rgba(255,255,255,0.14)',
+                            borderRadius: '4px',
+                            color: 'var(--white)',
+                            fontSize: '0.72rem',
+                            padding: '0.3rem 0.55rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1662,5 +2359,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+
 
 

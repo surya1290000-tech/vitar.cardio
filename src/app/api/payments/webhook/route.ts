@@ -3,8 +3,7 @@ import { stripe } from '@/lib/stripe';
 import { sql } from '@/lib/db';
 import Stripe from 'stripe';
 
-// Stripe requires the raw body for signature verification
-export const config = { api: { bodyParser: false } };
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
