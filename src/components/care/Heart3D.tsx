@@ -11,7 +11,11 @@ const MODEL_CANDIDATES = [
 ];
 
 const VIDEO_CANDIDATES = [
+  // Keep the verified heart asset first to avoid accidentally picking unrelated mp4 files.
   '/videos/anatomical-heart.mp4',
+  '/videos/anatomical-heart-alpha.webm',
+  '/videos/anatomical-heart-hq.mp4',
+  '/videos/anatomical-heart-4k.mp4',
   '/videos/real-human-heart.mp4',
   '/videos/human-heart.mp4',
   '/videos/heart.mp4',
@@ -34,20 +38,16 @@ export default function Heart3D() {
   const [mode, setMode] = useState<RenderMode>('loading');
   const [modelSrc, setModelSrc] = useState(MODEL_CANDIDATES[0]);
   const [videoSrc, setVideoSrc] = useState(VIDEO_CANDIDATES[0]);
+  const [videoHasAlpha, setVideoHasAlpha] = useState(false);
+  const [forceDirectVideo, setForceDirectVideo] = useState(true);
   const [imageSrc, setImageSrc] = useState(IMAGE_CANDIDATES[0]);
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('dark');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const useDirectVideo = videoHasAlpha || (forceDirectVideo && themeMode === 'dark');
 
   useEffect(() => {
     let mounted = true;
-
-    if (!document.getElementById('model-viewer-lib')) {
-      const script = document.createElement('script');
-      script.id = 'model-viewer-lib';
-      script.type = 'module';
-      script.src = 'https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js';
-      document.head.appendChild(script);
-    }
 
     const probe = async (url: string) => {
       try {
@@ -68,19 +68,21 @@ export default function Heart3D() {
     };
 
     const resolveAsset = async () => {
+      const foundVideo = await findFirstAvailable(VIDEO_CANDIDATES);
+      if (!mounted) return;
+      if (foundVideo) {
+        setVideoSrc(foundVideo);
+        setVideoHasAlpha(foundVideo.endsWith('.webm') && foundVideo.includes('alpha'));
+        setForceDirectVideo(true);
+        setMode('video');
+        return;
+      }
+
       const foundModel = await findFirstAvailable(MODEL_CANDIDATES);
       if (!mounted) return;
       if (foundModel) {
         setModelSrc(foundModel);
         setMode('model');
-        return;
-      }
-
-      const foundVideo = await findFirstAvailable(VIDEO_CANDIDATES);
-      if (!mounted) return;
-      if (foundVideo) {
-        setVideoSrc(foundVideo);
-        setMode('video');
         return;
       }
 
@@ -102,27 +104,65 @@ export default function Heart3D() {
   }, []);
 
   useEffect(() => {
-    if (mode !== 'video') return;
+    const root = document.documentElement;
+    const readTheme = () => {
+      setThemeMode(root.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+    };
+
+    readTheme();
+    const observer = new MutationObserver(readTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'model' || document.getElementById('model-viewer-lib')) return;
+
+    const script = document.createElement('script');
+    script.id = 'model-viewer-lib';
+    script.type = 'module';
+    script.src = 'https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js';
+    document.head.appendChild(script);
+
+    return () => {
+      // Keep the script once loaded for subsequent visits.
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'video' || useDirectVideo) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const videoWithVfc = video as HTMLVideoElement & {
+      requestVideoFrameCallback?: (cb: () => void) => number;
+      cancelVideoFrameCallback?: (id: number) => void;
+    };
 
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
     let rafId = 0;
+    let vfcId = 0;
     let mounted = true;
     let lastFrameTime = 0;
+    const frameIntervalMs = 1000 / 30;
+    let smoothBg: { r: number; g: number; b: number } | null = null;
+    let prevAlpha: Uint8Array | null = null;
+    let blankFrames = 0;
+    let anyFrameDrawn = false;
+    let fallbackTriggered = false;
     const workCanvas = document.createElement('canvas');
     const workCtx = workCanvas.getContext('2d', { willReadFrequently: true });
     if (!workCtx) return;
 
     const setCanvasSize = () => {
-      const size = 540;
+      const size = 560;
       if (canvas.width !== size || canvas.height !== size) {
         canvas.width = size;
         canvas.height = size;
+        prevAlpha = new Uint8Array(size * size);
       }
       if (workCanvas.width !== size || workCanvas.height !== size) {
         workCanvas.width = size;
@@ -130,11 +170,31 @@ export default function Heart3D() {
       }
     };
 
+    const smoothstep = (edge0: number, edge1: number, x: number) => {
+      const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    };
+
+    const scheduleNext = () => {
+      if (videoWithVfc.requestVideoFrameCallback) {
+        vfcId = videoWithVfc.requestVideoFrameCallback(() => draw(performance.now()));
+      } else {
+        rafId = requestAnimationFrame(draw);
+      }
+    };
+
+    const cancelScheduled = () => {
+      cancelAnimationFrame(rafId);
+      if (vfcId && videoWithVfc.cancelVideoFrameCallback) {
+        videoWithVfc.cancelVideoFrameCallback(vfcId);
+      }
+    };
+
     const draw = (time: number) => {
       if (!mounted) return;
-      rafId = requestAnimationFrame(draw);
+      scheduleNext();
 
-      if (time - lastFrameTime < 33) return;
+      if (time - lastFrameTime < frameIntervalMs) return;
       lastFrameTime = time;
       if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) return;
 
@@ -144,23 +204,58 @@ export default function Heart3D() {
       const dh = canvas.height;
       const vw = video.videoWidth;
       const vh = video.videoHeight;
+      const isLightTheme = themeMode === 'light';
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      workCtx.imageSmoothingEnabled = true;
+      workCtx.imageSmoothingQuality = 'high';
 
       const square = Math.min(vw, vh);
       const sx = Math.max(0, Math.floor((vw - square) * 0.5));
-      const sy = Math.max(0, Math.floor((vh - square) * 0.48));
+      const sy = Math.max(0, Math.floor((vh - square) * 0.5));
 
       workCtx.clearRect(0, 0, dw, dh);
       workCtx.drawImage(video, sx, sy, square, square, 0, 0, dw, dh);
 
       const frame = workCtx.getImageData(0, 0, dw, dh);
       const pixels = frame.data;
-      let minX = dw;
-      let minY = dh;
-      let maxX = -1;
-      let maxY = -1;
-      const alphaCutoff = 20;
+      // Estimate current frame background from corners (helps avoid hard clipping details).
+      let bgRNow = 0;
+      let bgGNow = 0;
+      let bgBNow = 0;
+      let bgSamples = 0;
+      const corner = 28;
+      for (let y = 0; y < corner; y += 2) {
+        for (let x = 0; x < corner; x += 2) {
+          const idxA = (y * dw + x) * 4;
+          const idxB = (y * dw + (dw - 1 - x)) * 4;
+          const idxC = ((dh - 1 - y) * dw + x) * 4;
+          const idxD = ((dh - 1 - y) * dw + (dw - 1 - x)) * 4;
+          bgRNow += pixels[idxA] + pixels[idxB] + pixels[idxC] + pixels[idxD];
+          bgGNow += pixels[idxA + 1] + pixels[idxB + 1] + pixels[idxC + 1] + pixels[idxD + 1];
+          bgBNow += pixels[idxA + 2] + pixels[idxB + 2] + pixels[idxC + 2] + pixels[idxD + 2];
+          bgSamples += 4;
+        }
+      }
+      bgRNow /= bgSamples;
+      bgGNow /= bgSamples;
+      bgBNow /= bgSamples;
+      if (!smoothBg) {
+        smoothBg = { r: bgRNow, g: bgGNow, b: bgBNow };
+      } else {
+        const bgLerp = 0.12;
+        smoothBg.r += (bgRNow - smoothBg.r) * bgLerp;
+        smoothBg.g += (bgGNow - smoothBg.g) * bgLerp;
+        smoothBg.b += (bgBNow - smoothBg.b) * bgLerp;
+      }
+      const bgR = smoothBg.r;
+      const bgG = smoothBg.g;
+      const bgB = smoothBg.b;
+      const bgMax = Math.max(bgR, bgG, bgB);
 
+      let visiblePixels = 0;
       for (let i = 0; i < pixels.length; i += 4) {
+        const ai = i >> 2;
         const r = pixels[i];
         const g = pixels[i + 1];
         const b = pixels[i + 2];
@@ -169,86 +264,149 @@ export default function Heart3D() {
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
         const saturation = max - min;
-        const redness = r - ((g + b) >> 1);
+        const lum = r * 0.2126 + g * 0.7152 + b * 0.0722;
+        const redDominance = r - g * 0.62 - b * 0.62;
+        const redVsMax = r - Math.max(g, b);
 
-        // Aggressive background removal for dark/black pixels
-        const isBlack = max < 25;
-        const isDarkGray = max < 45 && saturation < 15;
-        const isLowSatDark = max < 50 && saturation < 12 && redness < 10;
+        // Hard-remove true black and near-background neutrals first.
+        const isNearBlack = max < (isLightTheme ? 14 : 12);
+        const isNearBgNeutral =
+          max < bgMax + (isLightTheme ? 16 : 22) &&
+          saturation < (isLightTheme ? 10 : 13) &&
+          redDominance < (isLightTheme ? 8 : 10);
 
-        if (isBlack || isDarkGray || isLowSatDark) {
+        if (isNearBlack || isNearBgNeutral) {
           pixels[i + 3] = 0;
+          if (prevAlpha) prevAlpha[ai] = 0;
           continue;
         }
 
-        // Soft fade for very dark regions
-        if (max < 60) {
-          const keep = Math.max(0, (max - 25) / 35);
-          pixels[i + 3] = Math.floor(a * keep);
+        const dR = Math.abs(r - bgR);
+        const dG = Math.abs(g - bgG);
+        const dB = Math.abs(b - bgB);
+        const bgDistance = dR + dG + dB;
+
+        // Adaptive signal: brightness + color distance + red prominence.
+        const lumSignal = smoothstep(8, isLightTheme ? 140 : 126, max);
+        const colorSignal = smoothstep(isLightTheme ? 10 : 8, isLightTheme ? 96 : 88, bgDistance * 0.72 + redDominance * 1.08 + redVsMax * 0.66);
+        let alphaScale = Math.max(lumSignal * 0.52, colorSignal);
+
+        // Keep bright highlights that belong to the heart glow.
+        if (lum > 150 && r > g && r > b) {
+          alphaScale = Math.max(alphaScale, 0.72);
         }
 
-        // Enhance red tissue (heart)
-        if (redness > 20) {
-          pixels[i] = Math.min(255, Math.floor(r * 1.12 + 12));
-          pixels[i + 1] = Math.max(0, Math.floor(g * 0.91));
-          pixels[i + 2] = Math.max(0, Math.floor(b * 0.88));
-          pixels[i + 3] = Math.min(255, Math.floor(pixels[i + 3] * 1.14));
+        // Suppress low-saturation matte haze (especially in light mode) without deleting vessels.
+        if (isLightTheme) {
+          const neutralScore = saturation < 20 ? (20 - saturation) / 20 : 0;
+          const weakRedScore = redDominance < 16 ? (16 - redDominance) / 16 : 0;
+          const mattePenalty = neutralScore * 0.58 + weakRedScore * 0.46;
+          alphaScale *= Math.max(0, 1 - mattePenalty * 0.22);
+        } else if (saturation < 15 && lum < 108 && redDominance < 16) {
+          alphaScale *= 0.26;
         }
 
-        // Track bounds for content-aware scaling
-        if (pixels[i + 3] >= alphaCutoff) {
-          const px = (i >> 2) % dw;
-          const py = Math.floor((i >> 2) / dw);
-          if (px < minX) minX = px;
-          if (py < minY) minY = py;
-          if (px > maxX) maxX = px;
-          if (py > maxY) maxY = py;
+        // Preserve vessel detail and avoid over-clipping.
+        if (saturation > (isLightTheme ? 16 : 15) && redDominance > 7) {
+          alphaScale = Math.max(alphaScale, (isLightTheme ? 0.34 : 0.33) + Math.min(isLightTheme ? 0.32 : 0.3, redDominance / 118));
         }
+        if (isLightTheme && redVsMax > 7 && saturation > 16) {
+          alphaScale = Math.max(alphaScale, 0.38 + Math.min(0.2, redVsMax / 95));
+        }
+        if (isLightTheme && redDominance > 5 && saturation > 12) {
+          alphaScale = Math.max(alphaScale, 0.33);
+        }
+        if (!isLightTheme && redDominance > 4 && saturation > 10) {
+          alphaScale = Math.max(alphaScale, 0.3);
+        }
+
+        let nextAlpha = Math.floor(a * alphaScale);
+        // Matte fringe cleanup: suppress neutral edge spill only.
+        if (nextAlpha > 0) {
+          const fringe = redDominance < (isLightTheme ? 12 : 10) && saturation < (isLightTheme ? 12 : 9);
+          if (fringe) nextAlpha = Math.floor(nextAlpha * (isLightTheme ? 0.72 : 0.5));
+        }
+        // Smooth edge falloff to reduce jagged outlines.
+        if (nextAlpha > 0 && nextAlpha < 90 && redDominance > 6) {
+          nextAlpha = Math.min(255, Math.floor(nextAlpha * 1.12));
+        }
+        if (nextAlpha < (isLightTheme ? 2 : 10)) nextAlpha = 0;
+        if (prevAlpha) {
+          const prev = prevAlpha[ai];
+          const delta = Math.abs(nextAlpha - prev);
+          const adapt = delta > 64 ? 0.68 : delta > 28 ? 0.52 : 0.38;
+          nextAlpha = Math.round(prev + (nextAlpha - prev) * adapt);
+          prevAlpha[ai] = nextAlpha;
+        }
+        pixels[i + 3] = nextAlpha;
+        if (nextAlpha > 14) visiblePixels += 1;
+
+        // Subtle enhancement for heart texture only (avoid neon over-bloom).
+        if (redDominance > 14 && pixels[i + 3] > 0) {
+          pixels[i] = Math.min(255, Math.floor(r * 1.04 + 4));
+          pixels[i + 1] = Math.max(0, Math.floor(g * 0.96));
+          pixels[i + 2] = Math.max(0, Math.floor(b * 0.95));
+        }
+        if (pixels[i + 3] > 0 && pixels[i + 3] < 128) {
+          // Despill semitransparent edges so interpolation does not reintroduce dark halos.
+          pixels[i] = Math.min(255, Math.floor(pixels[i] * 1.02 + 1));
+          pixels[i + 1] = Math.max(0, Math.floor(pixels[i + 1] * 0.97));
+          pixels[i + 2] = Math.max(0, Math.floor(pixels[i + 2] * 0.95));
+        }
+
       }
       workCtx.putImageData(frame, 0, 0);
 
-      ctx.clearRect(0, 0, dw, dh);
-
-      if (maxX > minX && maxY > minY) {
-        const pad = 12;
-        const bx = Math.max(0, minX - pad);
-        const by = Math.max(0, minY - pad);
-        const bw = Math.min(dw - bx, maxX - minX + 1 + pad * 2);
-        const bh = Math.min(dh - by, maxY - minY + 1 + pad * 2);
-
-        // Better aspect ratio handling for perfect fit
-        const targetSize = dw * 0.88;
-        const scale = targetSize / Math.max(bw, bh);
-        const outW = bw * scale;
-        const outH = bh * scale;
-        
-        // Center perfectly
-        const dx = (dw - outW) * 0.5;
-        const dy = (dh - outH) * 0.5;
-
-        ctx.drawImage(workCanvas, bx, by, bw, bh, dx, dy, outW, outH);
-
-        // Glow effect - brighter for better visibility
-        const glow = ctx.createRadialGradient(dw * 0.5, dh * 0.5, dw * 0.06, dw * 0.5, dh * 0.5, dw * 0.4);
-        glow.addColorStop(0, 'rgba(255,110,110,0.22)');
-        glow.addColorStop(0.6, 'rgba(255,85,85,0.08)');
-        glow.addColorStop(1, 'rgba(255,82,82,0)');
-        ctx.globalCompositeOperation = 'screen';
-        ctx.fillStyle = glow;
-        ctx.fillRect(0, 0, dw, dh);
-        ctx.globalCompositeOperation = 'source-over';
+      // If processing yields near-empty output repeatedly, switch to stable direct-video fallback.
+      const visibleRatio = visiblePixels / (dw * dh);
+      if (visibleRatio < 0.004) {
+        blankFrames += 1;
       } else {
-        ctx.drawImage(workCanvas, 0, 0);
+        blankFrames = 0;
       }
+      if (blankFrames > 24 && !fallbackTriggered) {
+        fallbackTriggered = true;
+        setForceDirectVideo(true);
+        return;
+      }
+      // Fixed framing prevents in/out zoom jitter from frame-to-frame crop changes.
+      const targetSize = dw * (isLightTheme ? 0.94 : 0.95);
+      const dx = (dw - targetSize) * 0.5;
+      const dy = (dh - targetSize) * 0.522;
+
+      ctx.clearRect(0, 0, dw, dh);
+      ctx.filter = isLightTheme
+        ? 'contrast(1.1) saturate(1.1) brightness(1.01)'
+        : 'contrast(1.06) saturate(1.08)';
+      ctx.drawImage(workCanvas, 0, 0, dw, dh, dx, dy, targetSize, targetSize);
+      ctx.filter = 'none';
+
+      const glow = ctx.createRadialGradient(dw * 0.5, dh * 0.52, dw * 0.08, dw * 0.5, dh * 0.52, dw * 0.36);
+      glow.addColorStop(0, isLightTheme ? 'rgba(255,92,92,0.11)' : 'rgba(255,100,100,0.18)');
+      glow.addColorStop(0.6, isLightTheme ? 'rgba(255,80,80,0.03)' : 'rgba(255,80,80,0.06)');
+      glow.addColorStop(1, 'rgba(255,82,82,0)');
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, dw, dh);
+      ctx.globalCompositeOperation = 'source-over';
+      anyFrameDrawn = true;
     };
 
     const start = () => {
       video.play().catch(() => {
         // Ignore autoplay restrictions; muted+playsInline should pass on most browsers.
       });
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(draw);
+      cancelScheduled();
+      scheduleNext();
     };
+
+    // Hard fallback if no drawable frame appears shortly after startup.
+    const startupFallback = setTimeout(() => {
+      if (!anyFrameDrawn && !fallbackTriggered && mounted) {
+        fallbackTriggered = true;
+        setForceDirectVideo(true);
+      }
+    }, 2200);
 
     video.addEventListener('loadeddata', start);
     video.addEventListener('playing', start);
@@ -256,14 +414,17 @@ export default function Heart3D() {
 
     return () => {
       mounted = false;
-      cancelAnimationFrame(rafId);
+      cancelScheduled();
+      smoothBg = null;
+      prevAlpha = null;
+      clearTimeout(startupFallback);
       video.removeEventListener('loadeddata', start);
       video.removeEventListener('playing', start);
     };
-  }, [mode, videoSrc]);
+  }, [mode, videoSrc, themeMode, useDirectVideo]);
 
   return (
-    <div className="heart-scene" aria-label="Anatomical heart visualization">
+    <div className={`heart-scene ${mode === 'video' ? 'is-video' : ''}`} aria-label="Anatomical heart visualization">
       <div className="heart-ambient" />
       <div className="heart-rings">
         <span className="ring ring-a" />
@@ -312,23 +473,25 @@ export default function Heart3D() {
         )}
 
         {mode === 'video' && (
-          <div className="heart-photo-wrap heart-video-wrap">
+          <div className="heart-video-wrap">
             <span className="heart-photo-halo" aria-hidden="true" />
             <span className="heart-photo-orbit orbit-a" aria-hidden="true" />
             <span className="heart-photo-orbit orbit-b" aria-hidden="true" />
             <div className="heart-photo-rotor heart-video-rotor">
-              <video
-                ref={videoRef}
-                src={videoSrc}
-                className="heart-video-source"
-                autoPlay
-                loop
-                muted
-                playsInline
-                preload="auto"
-                aria-label="Anatomical human heart motion video"
-              />
-              <canvas ref={canvasRef} className="heart-video-canvas" aria-hidden="true" />
+              <div className="heart-video-motion">
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  className={`heart-video-source ${useDirectVideo ? 'heart-video-source--direct' : ''}`}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="auto"
+                  aria-label="Anatomical human heart motion video"
+                />
+                {!useDirectVideo && <canvas ref={canvasRef} className="heart-video-canvas" aria-hidden="true" />}
+              </div>
             </div>
           </div>
         )}

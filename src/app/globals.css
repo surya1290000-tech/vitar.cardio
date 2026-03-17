@@ -446,13 +446,54 @@ footer{background:var(--deep);border-top:1px solid var(--border);padding:5rem 5%
 .heart-photo-orbit.orbit-b{width:74%;aspect-ratio:1/1;animation:heartOrbit 10s linear infinite reverse;opacity:.65}
 .heart-photo-rotor{position:relative;width:88%;display:grid;place-items:center;transform-style:preserve-3d;animation:heartPhotoSway 8s ease-in-out infinite;z-index:2}
 .heart-photo{width:100%;height:auto;object-fit:contain;filter:drop-shadow(0 40px 30px rgba(18,0,5,.56)) drop-shadow(0 0 22px rgba(220,70,55,.22));animation:heartPhotoBreath 3.2s ease-in-out infinite}
-.heart-video-wrap{background:transparent}
+.heart-video-wrap{position:relative;width:100%;height:100%;display:grid;place-items:center;background:transparent}
 .heart-video-wrap::before{content:none}
-.heart-video-wrap::after{content:'';position:absolute;inset:0;background:radial-gradient(65% 65% at 50% 72%,rgba(235,58,58,.24) 0%,rgba(235,58,58,0) 68%);pointer-events:none;z-index:2}
-.heart-video-wrap .heart-photo-rotor{width:100%;display:grid;place-items:center;animation:heartVideoSway 8.6s ease-in-out infinite}
+.heart-video-wrap::after{content:none}
+.heart-video-wrap .heart-photo-rotor{width:100%;display:grid;place-items:center;animation:none;will-change:transform}
 .heart-video-rotor{position:relative;width:100%;max-width:540px;aspect-ratio:1/1}
-.heart-video-source{position:absolute;inset:0;opacity:0;pointer-events:none}
-.heart-video-canvas{width:100%;height:100%;display:block;background:transparent;filter:drop-shadow(0 28px 26px rgba(18,0,5,.36)) drop-shadow(0 0 22px rgba(220,68,58,.28))}
+.heart-video-motion{position:relative;width:100%;height:100%;animation:none;will-change:auto;contain:paint}
+.heart-video-source{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 52%;opacity:0;pointer-events:none;backface-visibility:hidden;transform:translateZ(0) scale(1.01);will-change:opacity}
+.heart-video-source--direct{
+  opacity:1 !important;
+  mix-blend-mode:screen;
+  filter:contrast(1.14) saturate(1.12) brightness(1.02);
+  -webkit-mask-image:radial-gradient(ellipse 61% 70% at 50% 56%,#000 0 61%,transparent 80%);
+  mask-image:radial-gradient(ellipse 61% 70% at 50% 56%,#000 0 61%,transparent 80%);
+  -webkit-mask-repeat:no-repeat;
+  mask-repeat:no-repeat;
+  -webkit-mask-size:100% 100%;
+  mask-size:100% 100%;
+}
+[data-theme='dark'] .heart-video-source--direct{
+  filter:contrast(1.16) saturate(1.14) brightness(1.04);
+}
+.heart-video-canvas{width:100%;height:100%;display:block;background:transparent;filter:contrast(1.06) saturate(1.08) drop-shadow(0 10px 10px rgba(18,0,5,.2)) drop-shadow(0 0 6px rgba(220,68,58,.14));image-rendering:auto}
+[data-theme='dark'] .heart-scene.is-video .heart-ambient{animation:none;opacity:.56}
+[data-theme='light'] .heart-scene.is-video .heart-ambient{animation:none;opacity:.5}
+.heart-scene.is-video .heart-rings .ring{animation:none;opacity:.34}
+[data-theme='light'] .heart-video-wrap{background:none !important;background-image:none !important}
+[data-theme='light'] .heart-video-wrap::after{content:none !important}
+[data-theme='light'] .heart-video-source{
+  opacity:0 !important;
+  mix-blend-mode:normal;
+  animation:none;
+  filter:none;
+  transform:translateZ(0);
+  -webkit-mask-image:none;
+  mask-image:none;
+}
+[data-theme='light'] .heart-video-source--direct{
+  opacity:0 !important;
+  mix-blend-mode:normal;
+  filter:none;
+  -webkit-mask-image:none;
+  mask-image:none;
+}
+[data-theme='light'] .heart-video-rotor{max-width:520px}
+[data-theme='light'] .heart-video-wrap{isolation:auto !important}
+[data-theme='light'] .heart-video-wrap .heart-photo-rotor{animation:none}
+[data-theme='light'] .heart-video-motion{animation:none}
+[data-theme='light'] .heart-video-canvas{display:block !important}
 .heart-missing{position:absolute;inset:10%;display:flex;flex-direction:column;justify-content:center;gap:.65rem;padding:1rem;border:1px dashed rgba(192,57,43,.4);border-radius:12px;background:rgba(12,12,14,.46);backdrop-filter:blur(6px);z-index:3}
 .heart-missing strong{font-size:.9rem;letter-spacing:.03em}
 .heart-missing p{font-size:.78rem;line-height:1.6;color:var(--muted)}
@@ -471,8 +512,28 @@ footer{background:var(--deep);border-top:1px solid var(--border);padding:5rem 5%
   60%{transform:translateZ(5px) scale(1.012)}
 }
 @keyframes heartVideoSway{
-  0%,100%{transform:translateY(0) rotateY(-4deg) rotateX(1deg)}
-  50%{transform:translateY(-8px) rotateY(4deg) rotateX(-1deg)}
+  0%,100%{transform:translateY(0) rotateY(-2deg) rotateX(.6deg)}
+  50%{transform:translateY(-2px) rotateY(2deg) rotateX(-.6deg)}
+}
+@keyframes heartBeatSmooth{
+  0%,100%{transform:translateY(0) scale(1)}
+  20%{transform:translateY(-1px) scale(1.012)}
+  42%{transform:translateY(0) scale(.996)}
+  62%{transform:translateY(-1px) scale(1.009)}
+}
+@keyframes heartBeatLightClear{
+  0%,100%{transform:translateY(0) scale(1)}
+  10%{transform:translateY(0) scale(.982)}
+  22%{transform:translateY(-3px) scale(1.03)}
+  34%{transform:translateY(-1px) scale(1.01)}
+  50%{transform:translateY(0) scale(.994)}
+  66%{transform:translateY(-2px) scale(1.016)}
+}
+@keyframes heartVideoLightGlow{
+  0%,100%{opacity:.95}
+  22%{opacity:1}
+  50%{opacity:.96}
+  66%{opacity:1}
 }
 @keyframes heartHaloPulse{
   0%,100%{opacity:.62;transform:scale(1)}
@@ -498,10 +559,7 @@ footer{background:var(--deep);border-top:1px solid var(--border);padding:5rem 5%
 [data-theme='light'] .heart-photo-halo{background:radial-gradient(circle,rgba(182,58,45,.32),rgba(182,58,45,.08) 46%,rgba(182,58,45,0) 74%)}
 [data-theme='light'] .heart-photo-orbit{border-color:rgba(182,58,45,.28)}
 [data-theme='light'] .heart-photo{filter:drop-shadow(0 30px 26px rgba(17,24,39,.28)) drop-shadow(0 0 16px rgba(182,58,45,.2))}
-[data-theme='light'] .heart-video-wrap::after{background:radial-gradient(65% 65% at 50% 72%,rgba(182,58,45,.32) 0%,rgba(182,58,45,.08) 68%)}
-[data-theme='light'] .heart-video-canvas{filter:drop-shadow(0 28px 28px rgba(17,24,39,.32)) drop-shadow(0 0 24px rgba(182,58,45,.36)) drop-shadow(0 0 8px rgba(182,58,45,.24))}
-[data-theme='light'] .heart-video-wrap .heart-photo-wrap{background:transparent!important}
-[data-theme='light'] .heart-video-wrap .heart-photo-wrap::before{display:none}
+[data-theme='light'] .heart-video-canvas{filter:contrast(1.1) saturate(1.12) brightness(1.02) drop-shadow(0 8px 8px rgba(17,24,39,.08)) drop-shadow(0 0 6px rgba(182,58,45,.12));image-rendering:auto}
 [data-theme='light'] .heart-missing{background:rgba(255,255,255,.76)}
 
 @media(max-width:1120px){

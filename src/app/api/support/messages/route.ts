@@ -13,6 +13,10 @@ const PostSchema = z.object({
   message: z.string().min(1).max(4000),
 });
 
+function isMissingRelationError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
+}
+
 // GET /api/support/messages?ticketId=...
 export const GET = withAuth(async (req: AuthedRequest) => {
   try {
@@ -49,6 +53,12 @@ export const GET = withAuth(async (req: AuthedRequest) => {
       })),
     });
   } catch (error) {
+    if (isMissingRelationError(error)) {
+      return NextResponse.json({
+        messages: [],
+        warning: 'support_tickets/support_messages tables are missing. Run latest DB migration/setup.sql.',
+      });
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid query params', details: error.errors }, { status: 400 });
     }
@@ -90,16 +100,6 @@ export const POST = withAuth(async (req: AuthedRequest) => {
         status = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
         updated_at = NOW()
       WHERE id = ${data.ticketId}
-    `;
-
-    await sql`
-      INSERT INTO support_messages (
-        ticket_id, sender_type, message
-      ) VALUES (
-        ${data.ticketId},
-        'support',
-        ${'Thanks for the update. A support specialist will follow up after reviewing your latest message.'}
-      )
     `;
 
     const row = inserted[0] as any;

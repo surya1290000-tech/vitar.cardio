@@ -21,12 +21,17 @@ export async function GET(req: NextRequest) {
     let orders: any[] = [];
     let payments: any[] = [];
     let alerts: any[] = [];
+    let supportTickets: any[] = [];
     let adminAuthLogs: any[] = [];
     let confirmedWithoutPayment = 0;
     let orphanPayments = 0;
     let capturedPayments = 0;
     let pendingCapturePayments = 0;
     let payoutReadyPayments = 0;
+    let totalSupportTickets = 0;
+    let openSupportTickets = 0;
+    let inProgressSupportTickets = 0;
+    let urgentSupportTickets = 0;
 
     // Keep admin users view working even if orders table/query has issues.
     try {
@@ -95,6 +100,21 @@ export async function GET(req: NextRequest) {
       console.error('[ADMIN AUTH LOG QUERY ERROR]', authLogError);
     }
 
+    // Recent support tickets for operations visibility
+    try {
+      supportTickets = await sql`
+        SELECT
+          t.id, t.user_id, u.email, u.first_name, u.last_name,
+          t.subject, t.category, t.priority, t.status, t.created_at, t.updated_at
+        FROM support_tickets t
+        JOIN users u ON u.id = t.user_id
+        ORDER BY t.updated_at DESC
+        LIMIT 100
+      `;
+    } catch (supportError) {
+      console.error('[ADMIN SUPPORT TICKETS QUERY ERROR]', supportError);
+    }
+
     // Reconciliation: confirmed orders with no payment rows
     try {
       const missingPayments = await sql`
@@ -135,6 +155,23 @@ export async function GET(req: NextRequest) {
       console.error('[ADMIN PAYMENT STATE COUNT ERROR]', paymentCountError);
     }
 
+    try {
+      const supportCounts = await sql`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'open')::int AS open_count,
+          COUNT(*) FILTER (WHERE status = 'in_progress')::int AS in_progress_count,
+          COUNT(*) FILTER (WHERE priority = 'urgent')::int AS urgent_count
+        FROM support_tickets
+      `;
+      totalSupportTickets = (supportCounts[0] as any)?.total ?? 0;
+      openSupportTickets = (supportCounts[0] as any)?.open_count ?? 0;
+      inProgressSupportTickets = (supportCounts[0] as any)?.in_progress_count ?? 0;
+      urgentSupportTickets = (supportCounts[0] as any)?.urgent_count ?? 0;
+    } catch (supportCountError) {
+      console.error('[ADMIN SUPPORT COUNT ERROR]', supportCountError);
+    }
+
     const totalUsers = users.length;
     const verifiedUsers = users.filter((u: any) => u.is_verified).length;
     const totalOrders = orders.length;
@@ -148,6 +185,7 @@ export async function GET(req: NextRequest) {
       orders,
       payments,
       alerts,
+      supportTickets,
       adminAuthLogs,
       stats: {
         totalUsers,
@@ -162,6 +200,10 @@ export async function GET(req: NextRequest) {
         capturedPayments,
         pendingCapturePayments,
         payoutReadyPayments,
+        totalSupportTickets,
+        openSupportTickets,
+        inProgressSupportTickets,
+        urgentSupportTickets,
       },
       reconciliation: {
         confirmedWithoutPayment,

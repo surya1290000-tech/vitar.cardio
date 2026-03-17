@@ -87,6 +87,10 @@ function buildAssistantReply(message: string, latest: any | null) {
   };
 }
 
+function isMissingRelationError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
+}
+
 // GET /api/health-assistant/chat - latest chat history
 export const GET = withAuth(async (req: AuthedRequest) => {
   try {
@@ -113,6 +117,13 @@ export const GET = withAuth(async (req: AuthedRequest) => {
         .reverse(),
     });
   } catch (error) {
+    if (isMissingRelationError(error)) {
+      // Graceful fallback when DB migrations are not fully applied yet.
+      return NextResponse.json({
+        messages: [],
+        warning: 'health_assistant_chats table is missing. Run latest DB migration/setup.sql.',
+      });
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid query params', details: error.errors }, { status: 400 });
     }

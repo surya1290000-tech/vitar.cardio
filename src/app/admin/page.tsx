@@ -39,6 +39,10 @@ interface Stats {
   capturedPayments?: number;
   pendingCapturePayments?: number;
   payoutReadyPayments?: number;
+  totalSupportTickets?: number;
+  openSupportTickets?: number;
+  inProgressSupportTickets?: number;
+  urgentSupportTickets?: number;
 }
 
 interface Payment {
@@ -621,6 +625,20 @@ export default function AdminPage() {
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button
+            onClick={() => router.push('/admin/support')}
+            style={{
+              background: 'rgba(192,57,43,0.1)',
+              border: '1px solid rgba(192,57,43,0.3)',
+              borderRadius: '3px',
+              padding: '0.4rem 1rem',
+              color: '#C0392B',
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+            }}
+          >
+            Support Desk
+          </button>
+          <button
             onClick={loadData}
             style={{
               background: 'rgba(255,255,255,0.06)',
@@ -764,6 +782,10 @@ export default function AdminPage() {
                 { label: 'Pending Capture', value: stats?.pendingCapturePayments ?? 0, color: '#F39C12' },
                 { label: 'Payout Ready', value: stats?.payoutReadyPayments ?? 0, color: '#16A085' },
                 { label: 'Critical Alerts', value: stats?.criticalAlerts ?? alerts.filter(a => a.severity === 'critical').length, color: '#E74C3C' },
+                { label: 'Support Tickets', value: stats?.totalSupportTickets ?? 0, color: '#5DADE2' },
+                { label: 'Open Tickets', value: stats?.openSupportTickets ?? 0, color: '#F39C12' },
+                { label: 'In Progress Tickets', value: stats?.inProgressSupportTickets ?? 0, color: '#3498DB' },
+                { label: 'Urgent Tickets', value: stats?.urgentSupportTickets ?? 0, color: '#E74C3C' },
                 { label: 'Confirmed w/o Payment', value: stats?.confirmedWithoutPayment ?? reconciliation?.confirmedWithoutPayment ?? 0, color: '#F39C12' },
                 { label: 'Orphan Payments', value: stats?.orphanPayments ?? reconciliation?.orphanPayments ?? 0, color: '#9B59B6' },
               ].map((card, i) => (
@@ -1071,6 +1093,57 @@ export default function AdminPage() {
 
         {!loading && tab === 'ops' && (
           <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
+              <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+                Support Operations
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'stretch' }}>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Total Tickets
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#5DADE2' }}>
+                    {stats?.totalSupportTickets ?? 0}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Open / In Progress
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#F39C12' }}>
+                    {stats?.openSupportTickets ?? 0} / {stats?.inProgressSupportTickets ?? 0}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Urgent Tickets
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#E74C3C' }}>
+                    {stats?.urgentSupportTickets ?? 0}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button
+                    onClick={() => router.push('/admin/support')}
+                    style={{
+                      width: '100%',
+                      background: '#C0392B',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '0.9rem 1rem',
+                      color: '#fff',
+                      fontSize: '0.82rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Open Support Desk
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
               <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
                 Reconciliation

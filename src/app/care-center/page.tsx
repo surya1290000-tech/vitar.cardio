@@ -52,6 +52,7 @@ export default function CareCenterPage() {
   const [assistantInput, setAssistantInput] = useState('');
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantSending, setAssistantSending] = useState(false);
+  const [assistantWarning, setAssistantWarning] = useState('');
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -61,6 +62,8 @@ export default function CareCenterPage() {
   const [ticketSubmitting, setTicketSubmitting] = useState(false);
   const [replySubmitting, setReplySubmitting] = useState(false);
   const [ticketReply, setTicketReply] = useState('');
+  const [supportWarning, setSupportWarning] = useState('');
+  const [ticketMessagesWarning, setTicketMessagesWarning] = useState('');
 
   const [ticketForm, setTicketForm] = useState({
     subject: '',
@@ -100,12 +103,13 @@ export default function CareCenterPage() {
         throw new Error(json?.error || 'Failed to load assistant history.');
       }
       setAssistantMessages(Array.isArray(json?.messages) ? json.messages : []);
+      setAssistantWarning(typeof json?.warning === 'string' ? json.warning : '');
     } catch (error: any) {
-      showToast({ type: 'error', title: 'Assistant Load Failed', message: error?.message || 'Failed to load assistant history.' });
+      setAssistantWarning(error?.message || 'Failed to load assistant history.');
     } finally {
       setAssistantLoading(false);
     }
-  }, [showToast]);
+  }, []);
 
   const loadTickets = useCallback(async (token: string) => {
     setTicketsLoading(true);
@@ -119,6 +123,7 @@ export default function CareCenterPage() {
       }
       const nextTickets = Array.isArray(json?.tickets) ? json.tickets : [];
       setTickets(nextTickets);
+      setSupportWarning(typeof json?.warning === 'string' ? json.warning : '');
       if (!selectedTicketId && nextTickets.length > 0) {
         setSelectedTicketId(nextTickets[0].id);
       }
@@ -126,13 +131,13 @@ export default function CareCenterPage() {
         setSelectedTicketId(nextTickets[0]?.id ?? null);
       }
     } catch (error: any) {
-      showToast({ type: 'error', title: 'Support Load Failed', message: error?.message || 'Failed to load support tickets.' });
+      setSupportWarning(error?.message || 'Failed to load support tickets.');
     } finally {
       setTicketsLoading(false);
     }
-  }, [selectedTicketId, showToast]);
+  }, [selectedTicketId]);
 
-  const loadTicketMessages = useCallback(async (token: string, ticketId: string) => {
+  const loadTicketMessages = useCallback(async (token: string, ticketId: string, silent = true) => {
     setTicketMessagesLoading(true);
     try {
       const res = await fetch(`/api/support/messages?ticketId=${ticketId}&limit=200`, {
@@ -143,8 +148,12 @@ export default function CareCenterPage() {
         throw new Error(json?.error || 'Failed to load ticket messages.');
       }
       setTicketMessages(Array.isArray(json?.messages) ? json.messages : []);
+      setTicketMessagesWarning(typeof json?.warning === 'string' ? json.warning : '');
     } catch (error: any) {
-      showToast({ type: 'error', title: 'Messages Load Failed', message: error?.message || 'Failed to load ticket messages.' });
+      setTicketMessagesWarning(error?.message || 'Failed to load ticket messages.');
+      if (!silent) {
+        showToast({ type: 'error', title: 'Messages Load Failed', message: error?.message || 'Failed to load ticket messages.' });
+      }
     } finally {
       setTicketMessagesLoading(false);
     }
@@ -176,6 +185,7 @@ export default function CareCenterPage() {
   useEffect(() => {
     if (!selectedTicketId) {
       setTicketMessages([]);
+      setTicketMessagesWarning('');
       return;
     }
 
@@ -198,8 +208,9 @@ export default function CareCenterPage() {
 
     setAssistantSending(true);
     setAssistantInput('');
+    const optimisticId = Date.now();
     const optimistic: AssistantMessage = {
-      id: Date.now(),
+      id: optimisticId,
       role: 'user',
       message: nextMessage,
       createdAt: new Date().toISOString(),
@@ -230,6 +241,8 @@ export default function CareCenterPage() {
         setAssistantMessages((prev) => [...prev, json.reply]);
       }
     } catch (error: any) {
+      setAssistantMessages((prev) => prev.filter((msg) => msg.id !== optimisticId));
+      setAssistantInput(nextMessage);
       showToast({ type: 'error', title: 'Assistant Error', message: error?.message || 'Assistant request failed.' });
     } finally {
       setAssistantSending(false);
@@ -274,7 +287,7 @@ export default function CareCenterPage() {
       await loadTickets(token);
       if (json?.ticket?.id) {
         setSelectedTicketId(json.ticket.id);
-        await loadTicketMessages(token, json.ticket.id);
+        await loadTicketMessages(token, json.ticket.id, false);
       }
     } catch (error: any) {
       showToast({ type: 'error', title: 'Support Error', message: error?.message || 'Failed to create ticket.' });
@@ -310,7 +323,7 @@ export default function CareCenterPage() {
       }
 
       setTicketReply('');
-      await Promise.all([loadTicketMessages(token, selectedTicketId), loadTickets(token)]);
+      await Promise.all([loadTicketMessages(token, selectedTicketId, false), loadTickets(token)]);
     } catch (error: any) {
       showToast({ type: 'error', title: 'Reply Failed', message: error?.message || 'Failed to send message.' });
     } finally {
@@ -347,6 +360,8 @@ export default function CareCenterPage() {
               <h2>Health Assistant</h2>
               <span className="status-pill online">Online</span>
             </div>
+
+            {assistantWarning && <p className="muted" style={{ color: '#E67E22' }}>{assistantWarning}</p>}
 
             <div className="assistant-quick-prompts">
               {quickPrompts.map((prompt) => (
@@ -391,6 +406,8 @@ export default function CareCenterPage() {
               <h2>Customer Support</h2>
               <span className="status-pill">Ticketed</span>
             </div>
+
+            {supportWarning && <p className="muted" style={{ color: '#E67E22' }}>{supportWarning}</p>}
 
             <form className="ticket-create" onSubmit={handleCreateTicket}>
               <input
@@ -467,6 +484,7 @@ export default function CareCenterPage() {
                       <strong>{selectedTicket.subject}</strong>
                       <span className={`status-pill ${selectedTicket.status}`}>{selectedTicket.status.replace('_', ' ')}</span>
                     </div>
+                    {ticketMessagesWarning && <p className="muted" style={{ color: '#E67E22', marginBottom: '.55rem' }}>{ticketMessagesWarning}</p>}
 
                     <div className="ticket-chat-log">
                       {ticketMessagesLoading ? (

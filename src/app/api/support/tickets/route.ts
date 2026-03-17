@@ -20,6 +20,10 @@ const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+function isMissingRelationError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
+}
+
 // GET /api/support/tickets - list current user's tickets
 export const GET = withAuth(async (req: AuthedRequest) => {
   try {
@@ -67,6 +71,13 @@ export const GET = withAuth(async (req: AuthedRequest) => {
       })),
     });
   } catch (error) {
+    if (isMissingRelationError(error)) {
+      // Graceful fallback when DB migrations are not fully applied yet.
+      return NextResponse.json({
+        tickets: [],
+        warning: 'support_tickets/support_messages tables are missing. Run latest DB migration/setup.sql.',
+      });
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid query params', details: error.errors }, { status: 400 });
     }
@@ -75,7 +86,7 @@ export const GET = withAuth(async (req: AuthedRequest) => {
   }
 });
 
-// POST /api/support/tickets - create a ticket and seed first message
+// POST /api/support/tickets - create a ticket and seed first user message
 export const POST = withAuth(async (req: AuthedRequest) => {
   try {
     const body = await req.json();
@@ -108,16 +119,6 @@ export const POST = withAuth(async (req: AuthedRequest) => {
       )
     `;
 
-    await sql`
-      INSERT INTO support_messages (
-        ticket_id, sender_type, message
-      ) VALUES (
-        ${ticket.id},
-        'support',
-        ${'Ticket received. Our care team will review this and reply soon. For urgent symptoms, contact emergency services immediately.'}
-      )
-    `;
-
     return NextResponse.json(
       {
         success: true,
@@ -131,7 +132,7 @@ export const POST = withAuth(async (req: AuthedRequest) => {
           status: ticket.status,
           createdAt: ticket.created_at,
           updatedAt: ticket.updated_at,
-          messageCount: 2,
+          messageCount: 1,
           lastMessageAt: ticket.created_at,
         },
       },
