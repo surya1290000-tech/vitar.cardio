@@ -52,6 +52,12 @@ CREATE TABLE IF NOT EXISTS medical_profiles (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id          UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   blood_type       VARCHAR(5),
+  height_cm        DECIMAL(5,2),
+  weight_kg        DECIMAL(5,2),
+  sex              VARCHAR(20),
+  medical_notes    TEXT,
+  family_history   TEXT,
+  resting_heart_rate INTEGER,
   allergies        TEXT[] DEFAULT '{}',
   medications      TEXT[] DEFAULT '{}',
   conditions       TEXT[] DEFAULT '{}',
@@ -60,6 +66,12 @@ CREATE TABLE IF NOT EXISTS medical_profiles (
   created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
 );
+ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS height_cm DECIMAL(5,2);
+ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(5,2);
+ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS sex VARCHAR(20);
+ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS medical_notes TEXT;
+ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS family_history TEXT;
+ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS resting_heart_rate INTEGER;
 
 -- ── EMERGENCY CONTACTS ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS emergency_contacts (

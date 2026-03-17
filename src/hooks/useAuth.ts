@@ -15,6 +15,20 @@ export function useSignup() {
       lastName: string;
       email: string;
       password: string;
+      phone?: string | null;
+      dateOfBirth?: string | null;
+      bloodType?: string | null;
+      heightCm?: number | null;
+      weightKg?: number | null;
+      sex?: string | null;
+      medicalNotes?: string | null;
+      familyHistory?: string | null;
+      restingHeartRate?: number | null;
+      allergies?: string[];
+      medications?: string[];
+      conditions?: string[];
+      physicianName?: string | null;
+      physicianPhone?: string | null;
     },
     options?: { next?: 'order' }
   ) => {

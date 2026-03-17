@@ -76,6 +76,12 @@ interface EmergencyContact {
 interface MedicalProfile {
   id: string;
   bloodType: string | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  sex: string | null;
+  medicalNotes: string | null;
+  familyHistory: string | null;
+  restingHeartRate: number | null;
   allergies: string[];
   medications: string[];
   conditions: string[];
@@ -149,6 +155,12 @@ export default function DashboardPage() {
   const [medicalProfileSuccess, setMedicalProfileSuccess] = useState('');
   const [medicalProfileForm, setMedicalProfileForm] = useState({
     bloodType: '',
+    heightCm: '',
+    weightKg: '',
+    sex: '',
+    medicalNotes: '',
+    familyHistory: '',
+    restingHeartRate: '',
     allergies: '',
     medications: '',
     conditions: '',
@@ -572,6 +584,12 @@ export default function DashboardPage() {
     setMedicalProfile(profileData);
     setMedicalProfileForm({
       bloodType: profileData?.bloodType ?? '',
+      heightCm: profileData?.heightCm != null ? String(profileData.heightCm) : '',
+      weightKg: profileData?.weightKg != null ? String(profileData.weightKg) : '',
+      sex: profileData?.sex ?? '',
+      medicalNotes: profileData?.medicalNotes ?? '',
+      familyHistory: profileData?.familyHistory ?? '',
+      restingHeartRate: profileData?.restingHeartRate != null ? String(profileData.restingHeartRate) : '',
       allergies: Array.isArray(profileData?.allergies) ? profileData!.allergies.join(', ') : '',
       medications: Array.isArray(profileData?.medications) ? profileData!.medications.join(', ') : '',
       conditions: Array.isArray(profileData?.conditions) ? profileData!.conditions.join(', ') : '',
@@ -773,6 +791,12 @@ export default function DashboardPage() {
 
       const payload = {
         bloodType: medicalProfileForm.bloodType.trim() || null,
+        heightCm: medicalProfileForm.heightCm.trim() ? Number(medicalProfileForm.heightCm) : null,
+        weightKg: medicalProfileForm.weightKg.trim() ? Number(medicalProfileForm.weightKg) : null,
+        sex: medicalProfileForm.sex.trim() || null,
+        medicalNotes: medicalProfileForm.medicalNotes.trim() || null,
+        familyHistory: medicalProfileForm.familyHistory.trim() || null,
+        restingHeartRate: medicalProfileForm.restingHeartRate.trim() ? Number(medicalProfileForm.restingHeartRate) : null,
         allergies: parseCsvList(medicalProfileForm.allergies),
         medications: parseCsvList(medicalProfileForm.medications),
         conditions: parseCsvList(medicalProfileForm.conditions),
@@ -1565,6 +1589,37 @@ export default function DashboardPage() {
                 value={medicalProfileForm.bloodType}
                 onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, bloodType: e.target.value }))}
               />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
+                <input
+                  className="f-inp"
+                  placeholder="Height (cm)"
+                  value={medicalProfileForm.heightCm}
+                  onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, heightCm: e.target.value }))}
+                />
+                <input
+                  className="f-inp"
+                  placeholder="Weight (kg)"
+                  value={medicalProfileForm.weightKg}
+                  onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, weightKg: e.target.value }))}
+                />
+                <input
+                  className="f-inp"
+                  placeholder="Resting HR"
+                  value={medicalProfileForm.restingHeartRate}
+                  onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, restingHeartRate: e.target.value }))}
+                />
+              </div>
+              <select
+                className="f-inp"
+                value={medicalProfileForm.sex}
+                onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, sex: e.target.value }))}
+              >
+                <option value="">Sex</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="other">Other</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
+              </select>
               <input
                 className="f-inp"
                 placeholder="Allergies (comma separated)"
@@ -1597,13 +1652,41 @@ export default function DashboardPage() {
                   onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, physicianPhone: e.target.value }))}
                 />
               </div>
+              <textarea
+                className="f-inp"
+                placeholder="Family cardiac history"
+                value={medicalProfileForm.familyHistory}
+                onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, familyHistory: e.target.value }))}
+                rows={3}
+                style={{ resize: 'vertical', minHeight: '90px' }}
+              />
+              <textarea
+                className="f-inp"
+                placeholder="Emergency medical notes"
+                value={medicalProfileForm.medicalNotes}
+                onChange={(e) => setMedicalProfileForm((prev) => ({ ...prev, medicalNotes: e.target.value }))}
+                rows={3}
+                style={{ resize: 'vertical', minHeight: '90px' }}
+              />
 
               {medicalProfileError && <div style={{ color: '#E74C3C', fontSize: '0.78rem' }}>{medicalProfileError}</div>}
               {medicalProfileSuccess && <div style={{ color: '#2ECC71', fontSize: '0.78rem' }}>{medicalProfileSuccess}</div>}
               {medicalProfileLoading && <div style={{ color: 'var(--muted)', fontSize: '0.76rem' }}>Loading profile...</div>}
               {!medicalProfileLoading && medicalProfile && (
-                <div style={{ color: 'var(--muted)', fontSize: '0.74rem' }}>
-                  Last updated: {medicalProfile.updatedAt ? new Date(medicalProfile.updatedAt).toLocaleDateString('en-IN') : 'recently'}
+                <div style={{ display: 'grid', gap: '0.35rem', color: 'var(--muted)', fontSize: '0.74rem' }}>
+                  <div>
+                    Profile summary:
+                    {' '}
+                    {[
+                      medicalProfile.sex ? `Sex ${medicalProfile.sex}` : null,
+                      medicalProfile.heightCm != null ? `${medicalProfile.heightCm} cm` : null,
+                      medicalProfile.weightKg != null ? `${medicalProfile.weightKg} kg` : null,
+                      medicalProfile.restingHeartRate != null ? `Resting HR ${medicalProfile.restingHeartRate}` : null,
+                    ].filter(Boolean).join(' | ') || 'Basic health details not added yet.'}
+                  </div>
+                  <div>
+                    Last updated: {medicalProfile.updatedAt ? new Date(medicalProfile.updatedAt).toLocaleDateString('en-IN') : 'recently'}
+                  </div>
                 </div>
               )}
 

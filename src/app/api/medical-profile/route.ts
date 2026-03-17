@@ -6,6 +6,12 @@ import { withAuth, AuthedRequest } from '@/lib/authMiddleware';
 const UpdateSchema = z
   .object({
     bloodType: z.string().max(5).nullable().optional(),
+    heightCm: z.number().positive().max(300).nullable().optional(),
+    weightKg: z.number().positive().max(500).nullable().optional(),
+    sex: z.string().max(20).nullable().optional(),
+    medicalNotes: z.string().max(4000).nullable().optional(),
+    familyHistory: z.string().max(4000).nullable().optional(),
+    restingHeartRate: z.number().int().positive().max(250).nullable().optional(),
     allergies: z.array(z.string().min(1)).optional(),
     medications: z.array(z.string().min(1)).optional(),
     conditions: z.array(z.string().min(1)).optional(),
@@ -21,6 +27,12 @@ export const GET = withAuth(async (req: AuthedRequest) => {
       id,
       user_id,
       blood_type,
+      height_cm,
+      weight_kg,
+      sex,
+      medical_notes,
+      family_history,
+      resting_heart_rate,
       allergies,
       medications,
       conditions,
@@ -44,6 +56,12 @@ export const GET = withAuth(async (req: AuthedRequest) => {
       id: p.id,
       userId: p.user_id,
       bloodType: p.blood_type,
+      heightCm: p.height_cm,
+      weightKg: p.weight_kg,
+      sex: p.sex,
+      medicalNotes: p.medical_notes,
+      familyHistory: p.family_history,
+      restingHeartRate: p.resting_heart_rate,
       allergies: p.allergies ?? [],
       medications: p.medications ?? [],
       conditions: p.conditions ?? [],
@@ -67,10 +85,28 @@ export const PATCH = withAuth(async (req: AuthedRequest) => {
 
     const updated = await sql`
       INSERT INTO medical_profiles (
-        user_id, blood_type, allergies, medications, conditions, physician_name, physician_phone
+        user_id,
+        blood_type,
+        height_cm,
+        weight_kg,
+        sex,
+        medical_notes,
+        family_history,
+        resting_heart_rate,
+        allergies,
+        medications,
+        conditions,
+        physician_name,
+        physician_phone
       ) VALUES (
         ${req.user.sub},
         ${data.bloodType ?? null},
+        ${data.heightCm ?? null},
+        ${data.weightKg ?? null},
+        ${data.sex ?? null},
+        ${data.medicalNotes ?? null},
+        ${data.familyHistory ?? null},
+        ${data.restingHeartRate ?? null},
         ${data.allergies ?? null},
         ${data.medications ?? null},
         ${data.conditions ?? null},
@@ -79,6 +115,12 @@ export const PATCH = withAuth(async (req: AuthedRequest) => {
       )
       ON CONFLICT (user_id) DO UPDATE SET
         blood_type = COALESCE(EXCLUDED.blood_type, medical_profiles.blood_type),
+        height_cm = COALESCE(EXCLUDED.height_cm, medical_profiles.height_cm),
+        weight_kg = COALESCE(EXCLUDED.weight_kg, medical_profiles.weight_kg),
+        sex = COALESCE(EXCLUDED.sex, medical_profiles.sex),
+        medical_notes = COALESCE(EXCLUDED.medical_notes, medical_profiles.medical_notes),
+        family_history = COALESCE(EXCLUDED.family_history, medical_profiles.family_history),
+        resting_heart_rate = COALESCE(EXCLUDED.resting_heart_rate, medical_profiles.resting_heart_rate),
         allergies = COALESCE(EXCLUDED.allergies, medical_profiles.allergies),
         medications = COALESCE(EXCLUDED.medications, medical_profiles.medications),
         conditions = COALESCE(EXCLUDED.conditions, medical_profiles.conditions),
@@ -89,6 +131,12 @@ export const PATCH = withAuth(async (req: AuthedRequest) => {
         id,
         user_id,
         blood_type,
+        height_cm,
+        weight_kg,
+        sex,
+        medical_notes,
+        family_history,
+        resting_heart_rate,
         allergies,
         medications,
         conditions,
@@ -106,6 +154,12 @@ export const PATCH = withAuth(async (req: AuthedRequest) => {
         id: p.id,
         userId: p.user_id,
         bloodType: p.blood_type,
+        heightCm: p.height_cm,
+        weightKg: p.weight_kg,
+        sex: p.sex,
+        medicalNotes: p.medical_notes,
+        familyHistory: p.family_history,
+        restingHeartRate: p.resting_heart_rate,
         allergies: p.allergies ?? [],
         medications: p.medications ?? [],
         conditions: p.conditions ?? [],
@@ -123,4 +177,3 @@ export const PATCH = withAuth(async (req: AuthedRequest) => {
     return NextResponse.json({ error: 'Failed to update medical profile.' }, { status: 500 });
   }
 });
-

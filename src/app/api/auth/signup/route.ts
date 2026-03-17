@@ -10,6 +10,20 @@ const SignupSchema = z.object({
   lastName:  z.string().min(1, 'Last name is required'),
   email:     z.string().email('Invalid email address'),
   password:  z.string().min(8, 'Password must be at least 8 characters'),
+  phone: z.string().max(20).nullable().optional(),
+  dateOfBirth: z.string().date().nullable().optional(),
+  bloodType: z.string().max(5).nullable().optional(),
+  heightCm: z.number().positive().max(300).nullable().optional(),
+  weightKg: z.number().positive().max(500).nullable().optional(),
+  sex: z.string().max(20).nullable().optional(),
+  medicalNotes: z.string().max(4000).nullable().optional(),
+  familyHistory: z.string().max(4000).nullable().optional(),
+  restingHeartRate: z.number().int().positive().max(250).nullable().optional(),
+  allergies: z.array(z.string().min(1)).optional(),
+  medications: z.array(z.string().min(1)).optional(),
+  conditions: z.array(z.string().min(1)).optional(),
+  physicianName: z.string().max(255).nullable().optional(),
+  physicianPhone: z.string().max(20).nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -31,11 +45,68 @@ export async function POST(req: NextRequest) {
 
     // Insert user
     const users = await sql`
-      INSERT INTO users (email, password_hash, first_name, last_name, role, is_verified)
-      VALUES (${data.email}, ${passwordHash}, ${data.firstName}, ${data.lastName}, 'user', false)
+      INSERT INTO users (email, password_hash, first_name, last_name, phone, date_of_birth, role, is_verified)
+      VALUES (
+        ${data.email},
+        ${passwordHash},
+        ${data.firstName},
+        ${data.lastName},
+        ${data.phone ?? null},
+        ${data.dateOfBirth ?? null},
+        'user',
+        false
+      )
       RETURNING id, email, first_name
     `;
     const user = users[0] as { id: string; email: string; first_name: string };
+
+    const hasMedicalProfile =
+      Boolean(data.bloodType) ||
+      data.heightCm != null ||
+      data.weightKg != null ||
+      Boolean(data.sex) ||
+      Boolean(data.medicalNotes) ||
+      Boolean(data.familyHistory) ||
+      data.restingHeartRate != null ||
+      Boolean(data.physicianName) ||
+      Boolean(data.physicianPhone) ||
+      (data.allergies?.length ?? 0) > 0 ||
+      (data.medications?.length ?? 0) > 0 ||
+      (data.conditions?.length ?? 0) > 0;
+
+    if (hasMedicalProfile) {
+      await sql`
+        INSERT INTO medical_profiles (
+          user_id,
+          blood_type,
+          height_cm,
+          weight_kg,
+          sex,
+          medical_notes,
+          family_history,
+          resting_heart_rate,
+          allergies,
+          medications,
+          conditions,
+          physician_name,
+          physician_phone
+        ) VALUES (
+          ${user.id},
+          ${data.bloodType ?? null},
+          ${data.heightCm ?? null},
+          ${data.weightKg ?? null},
+          ${data.sex ?? null},
+          ${data.medicalNotes ?? null},
+          ${data.familyHistory ?? null},
+          ${data.restingHeartRate ?? null},
+          ${data.allergies ?? []},
+          ${data.medications ?? []},
+          ${data.conditions ?? []},
+          ${data.physicianName ?? null},
+          ${data.physicianPhone ?? null}
+        )
+      `;
+    }
 
     // Generate OTP + store hashed version with 10-min expiry
     const otp = generateOTP();
