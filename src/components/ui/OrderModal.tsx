@@ -70,7 +70,11 @@ export default function OrderModal() {
     const json = await res.json();
     if (!res.ok || !json?.accessToken) return null;
 
-    setUser(user, json.accessToken);
+    if (json?.user) {
+      setUser(json.user, json.accessToken);
+    } else {
+      setUser(user, json.accessToken);
+    }
     return json.accessToken as string;
   };
 

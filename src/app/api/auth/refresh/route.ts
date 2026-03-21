@@ -33,16 +33,34 @@ export async function POST(req: NextRequest) {
     `;
 
     const users = await sql`
-      SELECT id, email, role FROM users WHERE id = ${payload.sub} AND is_verified = true
+      SELECT id, email, first_name, last_name, role
+      FROM users
+      WHERE id = ${payload.sub} AND is_verified = true
     `;
     if (users.length === 0) {
       return NextResponse.json({ error: 'User not found.' }, { status: 401 });
     }
 
-    const user = users[0] as { id: string; email: string; role: string };
+    const user = users[0] as {
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      role: string;
+    };
     const newAccessToken = signAccessToken({ sub: user.id, email: user.email, role: user.role });
 
-    return NextResponse.json({ success: true, accessToken: newAccessToken });
+    return NextResponse.json({
+      success: true,
+      accessToken: newAccessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+      },
+    });
   } catch {
     return NextResponse.json({ error: 'Invalid session.' }, { status: 401 });
   }

@@ -20,7 +20,7 @@ interface Order {
 function SuccessContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id') || '';
-  const { accessToken } = useAuthStore();
+  const { accessToken, user, setUser } = useAuthStore();
 
   const [loading, setLoading] = useState(false);
   const [resolvedOrder, setResolvedOrder] = useState<Order | null>(null);
@@ -42,7 +42,14 @@ function SuccessContent() {
             credentials: 'include',
           });
           const refreshJson = await refreshRes.json();
-          if (refreshRes.ok && refreshJson?.accessToken) token = refreshJson.accessToken;
+          if (refreshRes.ok && refreshJson?.accessToken) {
+            token = refreshJson.accessToken;
+            if (refreshJson?.user) {
+              setUser(refreshJson.user, refreshJson.accessToken);
+            } else if (user) {
+              setUser(user, refreshJson.accessToken);
+            }
+          }
         }
 
         if (!token) return;
@@ -66,7 +73,7 @@ function SuccessContent() {
     return () => {
       active = false;
     };
-  }, [sessionId, accessToken]);
+  }, [sessionId, accessToken, user, setUser]);
 
   return (
     <div
