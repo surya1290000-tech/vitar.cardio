@@ -7,6 +7,7 @@ export default function Hero() {
   <div class="hero-inner">
     <div class="hero-content">
       <div class="eyebrow">Medical-Grade Cardiac Intelligence</div>
+      <div class="hero-status">Platform currently under development</div>
       <h1 class="hero-title">Your heart.<br><em>Protected.</em><br>Always.</h1>
       <p class="hero-sub">VITAR detects early warning signs of cardiac events in real time — alerting you, your contacts, and emergency services before it's too late.</p>
       <div class="hero-actions">
