@@ -234,6 +234,81 @@ CREATE TABLE IF NOT EXISTS health_assistant_chats (
 );
 CREATE INDEX IF NOT EXISTS idx_health_assistant_user_time ON health_assistant_chats(user_id, created_at DESC);
 
+-- AI / AUTOMATION WORKFLOWS
+CREATE TABLE IF NOT EXISTS ai_workflows (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_key     VARCHAR(80) NOT NULL UNIQUE,
+  name             VARCHAR(160) NOT NULL,
+  description      TEXT NOT NULL,
+  module           VARCHAR(40) NOT NULL,
+  trigger_event    VARCHAR(80) NOT NULL,
+  automation_type  VARCHAR(40) NOT NULL DEFAULT 'heuristic_ai',
+  is_enabled       BOOLEAN NOT NULL DEFAULT true,
+  config           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_workflows_module_enabled ON ai_workflows(module, is_enabled);
+
+CREATE TABLE IF NOT EXISTS automation_logs (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id   UUID REFERENCES ai_workflows(id) ON DELETE SET NULL,
+  workflow_key  VARCHAR(80) NOT NULL,
+  entity_type   VARCHAR(40) NOT NULL,
+  entity_id     VARCHAR(120) NOT NULL,
+  user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+  status        VARCHAR(30) NOT NULL DEFAULT 'completed',
+  severity      VARCHAR(20) NOT NULL DEFAULT 'normal',
+  title         VARCHAR(180) NOT NULL,
+  summary       TEXT NOT NULL,
+  payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_automation_logs_created_at ON automation_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_automation_logs_workflow_key ON automation_logs(workflow_key, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_automation_logs_entity ON automation_logs(entity_type, entity_id, created_at DESC);
+
+INSERT INTO ai_workflows (workflow_key, name, description, module, trigger_event, automation_type, is_enabled, config)
+VALUES
+  (
+    'support_ticket_triage',
+    'Support Ticket Triage',
+    'Auto-classifies new support tickets, upgrades priority when risk language appears, and drafts a first response for the support desk.',
+    'support',
+    'support.ticket.created',
+    'heuristic_ai',
+    true,
+    '{"autoUpgradePriority": true, "autoCategorizeGeneral": true, "generateDraftReply": true}'::jsonb
+  ),
+  (
+    'health_reading_guardian',
+    'Health Reading Guardian',
+    'Evaluates incoming health readings, summarizes risk, and records automation events for elevated or critical readings.',
+    'health',
+    'health.reading.recorded',
+    'heuristic_ai',
+    true,
+    '{"criticalRiskThreshold": 0.75, "highRiskThreshold": 0.5, "logNormalReadings": false}'::jsonb
+  ),
+  (
+    'assistant_urgent_triage',
+    'Assistant Urgent Triage',
+    'Flags urgent care-center conversations so high-risk symptom messages are visible in admin operations.',
+    'assistant',
+    'assistant.message.created',
+    'heuristic_ai',
+    true,
+    '{"logHighSeverityReplies": true}'::jsonb
+  )
+ON CONFLICT (workflow_key) DO UPDATE SET
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  module = EXCLUDED.module,
+  trigger_event = EXCLUDED.trigger_event,
+  automation_type = EXCLUDED.automation_type,
+  config = COALESCE(ai_workflows.config, '{}'::jsonb) || EXCLUDED.config,
+  updated_at = NOW();
+
 -- ── NOTIFICATION LOG ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS notification_log (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

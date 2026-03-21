@@ -32,6 +32,9 @@ export async function GET(req: NextRequest) {
     let openSupportTickets = 0;
     let inProgressSupportTickets = 0;
     let urgentSupportTickets = 0;
+    let activeAutomationWorkflows = 0;
+    let automationRuns24h = 0;
+    let urgentAutomationRuns24h = 0;
 
     // Keep admin users view working even if orders table/query has issues.
     try {
@@ -172,6 +175,31 @@ export async function GET(req: NextRequest) {
       console.error('[ADMIN SUPPORT COUNT ERROR]', supportCountError);
     }
 
+    try {
+      const workflowCounts = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE is_enabled = true)::int AS active_workflows
+        FROM ai_workflows
+      `;
+      activeAutomationWorkflows = (workflowCounts[0] as any)?.active_workflows ?? 0;
+    } catch (workflowCountError) {
+      console.error('[ADMIN AUTOMATION WORKFLOW COUNT ERROR]', workflowCountError);
+    }
+
+    try {
+      const recentAutomation = await sql`
+        SELECT
+          COUNT(*)::int AS runs_24h,
+          COUNT(*) FILTER (WHERE severity IN ('urgent', 'critical'))::int AS urgent_runs_24h
+        FROM automation_logs
+        WHERE created_at >= NOW() - INTERVAL '24 hours'
+      `;
+      automationRuns24h = (recentAutomation[0] as any)?.runs_24h ?? 0;
+      urgentAutomationRuns24h = (recentAutomation[0] as any)?.urgent_runs_24h ?? 0;
+    } catch (automationCountError) {
+      console.error('[ADMIN AUTOMATION LOG COUNT ERROR]', automationCountError);
+    }
+
     const totalUsers = users.length;
     const verifiedUsers = users.filter((u: any) => u.is_verified).length;
     const totalOrders = orders.length;
@@ -204,6 +232,9 @@ export async function GET(req: NextRequest) {
         openSupportTickets,
         inProgressSupportTickets,
         urgentSupportTickets,
+        activeAutomationWorkflows,
+        automationRuns24h,
+        urgentAutomationRuns24h,
       },
       reconciliation: {
         confirmedWithoutPayment,

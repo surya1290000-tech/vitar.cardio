@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sql } from '@/lib/db';
 import { getAdminLoginSecret, isAdminRequest } from '@/lib/adminAuth';
+import { getSupportTicketAutomationDraft } from '@/lib/automationWorkflows';
 
 const QuerySchema = z.object({
   ticketId: z.string().uuid(),
@@ -60,6 +61,8 @@ export async function GET(req: NextRequest) {
       LIMIT ${parsed.limit}
     `;
 
+    const automation = await getSupportTicketAutomationDraft(parsed.ticketId);
+
     const row = ticket[0] as any;
     return NextResponse.json({
       ticket: {
@@ -75,6 +78,7 @@ export async function GET(req: NextRequest) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       },
+      automation,
       messages: messages.map((m: any) => ({
         id: m.id,
         ticketId: m.ticket_id,
@@ -151,4 +155,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to send support reply.' }, { status: 500 });
   }
 }
-

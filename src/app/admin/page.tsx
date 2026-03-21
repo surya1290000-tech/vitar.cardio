@@ -43,6 +43,9 @@ interface Stats {
   openSupportTickets?: number;
   inProgressSupportTickets?: number;
   urgentSupportTickets?: number;
+  activeAutomationWorkflows?: number;
+  automationRuns24h?: number;
+  urgentAutomationRuns24h?: number;
 }
 
 interface Payment {
@@ -108,6 +111,34 @@ interface HealthReading {
   recorded_at: string;
 }
 
+interface AutomationWorkflow {
+  id: string;
+  workflowKey: string;
+  name: string;
+  description: string;
+  module: string;
+  triggerEvent: string;
+  automationType: string;
+  isEnabled: boolean;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface AutomationLog {
+  id: string;
+  workflowKey: string;
+  entityType: string;
+  entityId: string;
+  userId: string | null;
+  status: string;
+  severity: string;
+  title: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 interface PaginationState {
   page: number;
   limit: number;
@@ -143,8 +174,11 @@ export default function AdminPage() {
   const [adminAuthLogs, setAdminAuthLogs] = useState<AdminAuthLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [healthReadings, setHealthReadings] = useState<HealthReading[]>([]);
+  const [automationWorkflows, setAutomationWorkflows] = useState<AutomationWorkflow[]>([]);
+  const [automationLogs, setAutomationLogs] = useState<AutomationLog[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [healthLoading, setHealthLoading] = useState(false);
+  const [automationLoading, setAutomationLoading] = useState(false);
   const [devicePagination, setDevicePagination] = useState<PaginationState>({
     page: 1,
     limit: 20,
@@ -199,6 +233,8 @@ export default function AdminPage() {
       setAdminAuthLogs([]);
       setDevices([]);
       setHealthReadings([]);
+      setAutomationWorkflows([]);
+      setAutomationLogs([]);
       setDevicePagination({ page: 1, limit: 20, total: 0, totalPages: 1, hasNextPage: false, hasPrevPage: false });
       setHealthPagination({ page: 1, limit: 30, total: 0, totalPages: 1, hasNextPage: false, hasPrevPage: false });
       setDeviceFilters({ search: '', status: 'all' });
@@ -269,7 +305,7 @@ export default function AdminPage() {
     }
 
     // Load paginated admin modules in parallel.
-    await Promise.all([loadDevices(1), loadHealthReadings(1)]);
+    await Promise.all([loadDevices(1), loadHealthReadings(1), loadAutomationSnapshot()]);
   };
 
   const loadDevices = async (page = 1, overrides?: DeviceFilterState) => {
@@ -331,6 +367,56 @@ export default function AdminPage() {
       console.error('Failed to load health readings:', err);
     } finally {
       setHealthLoading(false);
+    }
+  };
+
+  const loadAutomationSnapshot = async () => {
+    setAutomationLoading(true);
+    try {
+      const res = await fetch('/api/admin/automation/workflows', {
+        credentials: 'include',
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setAutomationWorkflows(json.workflows || []);
+        setAutomationLogs(json.logs || []);
+      } else if (res.status === 401) {
+        setAuthed(false);
+      }
+    } catch (err) {
+      console.error('Failed to load automation snapshot:', err);
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  const toggleWorkflow = async (workflowKey: string, isEnabled: boolean) => {
+    try {
+      const res = await fetch('/api/admin/automation/workflows', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowKey, isEnabled }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        showToast({ type: 'error', title: 'Workflow Update Failed', message: json?.error || 'Could not update workflow.' });
+        return;
+      }
+      setAutomationWorkflows((prev) =>
+        prev.map((workflow) =>
+          workflow.workflowKey === workflowKey ? { ...workflow, isEnabled: json.workflow.isEnabled } : workflow
+        )
+      );
+      showToast({
+        type: 'success',
+        title: isEnabled ? 'Workflow Enabled' : 'Workflow Disabled',
+        message: json.workflow.name,
+      });
+      await loadAutomationSnapshot();
+    } catch (err) {
+      console.error(err);
+      showToast({ type: 'error', title: 'Workflow Update Failed', message: 'Network error while updating workflow.' });
     }
   };
 
@@ -624,6 +710,20 @@ export default function AdminPage() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <button
+            onClick={() => router.push('/admin/automation')}
+            style={{
+              background: 'rgba(47,128,237,0.1)',
+              border: '1px solid rgba(47,128,237,0.28)',
+              borderRadius: '3px',
+              color: '#BFD8FF',
+              padding: '0.75rem 1rem',
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+            }}
+          >
+            Automation Studio
+          </button>
           <button
             onClick={() => router.push('/admin/support')}
             style={{
@@ -1094,6 +1194,158 @@ export default function AdminPage() {
         {!loading && tab === 'ops' && (
           <div style={{ display: 'grid', gap: '1rem' }}>
             <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  AI & Automation Workflows
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => void loadAutomationSnapshot()}
+                  disabled={automationLoading}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--muted)',
+                    padding: '0.55rem 0.8rem',
+                    fontSize: '0.74rem',
+                    cursor: automationLoading ? 'not-allowed' : 'pointer',
+                    opacity: automationLoading ? 0.7 : 1,
+                  }}
+                >
+                  {automationLoading ? 'Refreshing...' : 'Refresh Automations'}
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Active Workflows
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#5DADE2' }}>
+                    {stats?.activeAutomationWorkflows ?? automationWorkflows.filter((workflow) => workflow.isEnabled).length}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Runs In 24h
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#1ABC9C' }}>
+                    {stats?.automationRuns24h ?? 0}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Urgent / Critical Runs
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#E74C3C' }}>
+                    {stats?.urgentAutomationRuns24h ?? 0}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Coverage
+                  </div>
+                  <div style={{ fontSize: '0.92rem', color: 'var(--white)', lineHeight: 1.7 }}>
+                    Support triage, health guardian, and assistant escalation are now wired into live routes.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                {automationWorkflows.map((workflow) => (
+                  <div key={workflow.id} style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontSize: '0.9rem', color: 'var(--white)', fontWeight: 600 }}>{workflow.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#C0392B', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '0.3rem' }}>
+                          {workflow.module} • {workflow.triggerEvent}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void toggleWorkflow(workflow.workflowKey, !workflow.isEnabled)}
+                        style={{
+                          background: workflow.isEnabled ? 'rgba(46,204,113,0.12)' : 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${workflow.isEnabled ? 'rgba(46,204,113,0.3)' : 'var(--border)'}`,
+                          borderRadius: '999px',
+                          color: workflow.isEnabled ? '#2ECC71' : 'var(--muted)',
+                          padding: '0.35rem 0.75rem',
+                          fontSize: '0.72rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {workflow.isEnabled ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+                    <p style={{ marginTop: '0.7rem', fontSize: '0.82rem', color: 'var(--muted)', lineHeight: 1.7 }}>
+                      {workflow.description}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{ padding: '0.95rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.74rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Recent Automation Activity
+                </div>
+                {automationLogs.length === 0 ? (
+                  <div style={{ padding: '1rem', color: 'var(--muted)', fontSize: '0.82rem' }}>
+                    No automation activity yet. The first support ticket, health reading, or urgent assistant message will show up here.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid' }}>
+                    {automationLogs.slice(0, 6).map((log) => (
+                      <div key={log.id} style={{ padding: '0.95rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ fontSize: '0.86rem', color: 'var(--white)', fontWeight: 600 }}>{log.title}</div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
+                              {log.workflowKey} • {log.entityType} • {new Date(log.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <span
+                            style={{
+                              alignSelf: 'flex-start',
+                              fontSize: '0.68rem',
+                              padding: '0.25rem 0.7rem',
+                              borderRadius: '999px',
+                              background:
+                                log.severity === 'critical' || log.severity === 'urgent'
+                                  ? 'rgba(231,76,60,0.12)'
+                                  : log.severity === 'high'
+                                    ? 'rgba(243,156,18,0.12)'
+                                    : 'rgba(46,204,113,0.12)',
+                              color:
+                                log.severity === 'critical' || log.severity === 'urgent'
+                                  ? '#E74C3C'
+                                  : log.severity === 'high'
+                                    ? '#F39C12'
+                                    : '#2ECC71',
+                              border: `1px solid ${
+                                log.severity === 'critical' || log.severity === 'urgent'
+                                  ? 'rgba(231,76,60,0.25)'
+                                  : log.severity === 'high'
+                                    ? 'rgba(243,156,18,0.25)'
+                                    : 'rgba(46,204,113,0.25)'
+                              }`,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {log.severity}
+                          </span>
+                        </div>
+                        <div style={{ marginTop: '0.45rem', fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.7 }}>
+                          {log.summary}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
               <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
                 Support Operations
               </h3>
@@ -1139,6 +1391,24 @@ export default function AdminPage() {
                     }}
                   >
                     Open Support Desk
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button
+                    onClick={() => router.push('/admin/automation')}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(47,128,237,0.14)',
+                      border: '1px solid rgba(47,128,237,0.28)',
+                      borderRadius: '6px',
+                      color: '#D8E8FF',
+                      fontSize: '0.78rem',
+                      padding: '0.95rem 1rem',
+                      letterSpacing: '0.06em',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Open Automation Studio
                   </button>
                 </div>
               </div>

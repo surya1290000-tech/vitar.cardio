@@ -31,6 +31,17 @@ type AdminSupportMessage = {
   createdAt: string;
 };
 
+type SupportAutomationDraft = {
+  suggestedCategory: string | null;
+  suggestedPriority: string | null;
+  originalCategory: string | null;
+  originalPriority: string | null;
+  draftReply: string | null;
+  summary: string;
+  severity: string;
+  createdAt: string;
+};
+
 type Pagination = {
   page: number;
   limit: number;
@@ -58,6 +69,7 @@ export default function AdminSupportPage() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AdminSupportMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [automationDraft, setAutomationDraft] = useState<SupportAutomationDraft | null>(null);
   const [reply, setReply] = useState('');
   const [replyStatus, setReplyStatus] = useState<TicketStatus>('in_progress');
   const [replying, setReplying] = useState(false);
@@ -110,6 +122,7 @@ export default function AdminSupportPage() {
         if (nextTickets.length === 0) {
           setSelectedTicketId(null);
           setMessages([]);
+          setAutomationDraft(null);
           return;
         }
 
@@ -145,6 +158,7 @@ export default function AdminSupportPage() {
           throw new Error(json?.error || 'Failed to load messages.');
         }
         setMessages(Array.isArray(json?.messages) ? json.messages : []);
+        setAutomationDraft(json?.automation ?? null);
         if (json?.ticket?.status) {
           setReplyStatus(json.ticket.status);
         }
@@ -251,6 +265,7 @@ export default function AdminSupportPage() {
       }
 
       setReply('');
+      setAutomationDraft(null);
       await Promise.all([loadMessages(selectedTicketId), loadTickets(pagination.page)]);
       showToast({ type: 'success', title: 'Reply Sent' });
     } catch (error: any) {
@@ -326,6 +341,13 @@ export default function AdminSupportPage() {
             <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem' }}>Support Operations</h1>
             <p style={{ color: 'var(--muted)', fontSize: '.9rem' }}>Manage tickets, assign status, and send care responses.</p>
           </div>
+          <button
+            type="button"
+            onClick={() => router.push('/admin/automation')}
+            style={{ border: '1px solid rgba(47,128,237,0.28)', background: 'rgba(47,128,237,0.12)', color: '#D8E8FF', borderRadius: 8, padding: '.6rem .9rem' }}
+          >
+            Automation Studio
+          </button>
           <button
             type="button"
             onClick={() => router.push('/admin')}
@@ -484,6 +506,116 @@ export default function AdminSupportPage() {
                     </div>
                   </div>
                   <p style={{ color: 'var(--muted)', fontSize: '.83rem', marginTop: '.65rem' }}>{selectedTicket.description}</p>
+                  {automationDraft && (
+                    <div
+                      style={{
+                        marginTop: '.85rem',
+                        background: 'rgba(93, 173, 226, 0.08)',
+                        border: '1px solid rgba(93, 173, 226, 0.22)',
+                        borderRadius: 10,
+                        padding: '.85rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ fontSize: '.72rem', color: '#5DADE2', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '.35rem' }}>
+                            AI Reply Workflow
+                          </div>
+                          <div style={{ fontSize: '.82rem', color: 'var(--muted)', lineHeight: 1.65 }}>
+                            {automationDraft.summary}
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: '.68rem',
+                            padding: '.24rem .7rem',
+                            borderRadius: 999,
+                            background:
+                              automationDraft.severity === 'urgent'
+                                ? 'rgba(231,76,60,0.14)'
+                                : automationDraft.severity === 'high'
+                                  ? 'rgba(243,156,18,0.14)'
+                                  : 'rgba(46,204,113,0.12)',
+                            color:
+                              automationDraft.severity === 'urgent'
+                                ? '#E74C3C'
+                                : automationDraft.severity === 'high'
+                                  ? '#F39C12'
+                                  : '#2ECC71',
+                            border: `1px solid ${
+                              automationDraft.severity === 'urgent'
+                                ? 'rgba(231,76,60,0.24)'
+                                : automationDraft.severity === 'high'
+                                  ? 'rgba(243,156,18,0.24)'
+                                  : 'rgba(46,204,113,0.24)'
+                            }`,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {automationDraft.severity}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '.65rem', flexWrap: 'wrap', marginTop: '.7rem', fontSize: '.7rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        {automationDraft.originalCategory && automationDraft.suggestedCategory && (
+                          <span>Category: {automationDraft.originalCategory} → {automationDraft.suggestedCategory}</span>
+                        )}
+                        {automationDraft.originalPriority && automationDraft.suggestedPriority && (
+                          <span>Priority: {automationDraft.originalPriority} → {automationDraft.suggestedPriority}</span>
+                        )}
+                      </div>
+
+                      {automationDraft.draftReply && (
+                        <>
+                          <div
+                            style={{
+                              marginTop: '.75rem',
+                              background: 'rgba(255,255,255,.03)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 8,
+                              padding: '.75rem',
+                              fontSize: '.84rem',
+                              lineHeight: 1.7,
+                            }}
+                          >
+                            {automationDraft.draftReply}
+                          </div>
+                          <div style={{ display: 'flex', gap: '.55rem', flexWrap: 'wrap', marginTop: '.7rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => setReply(automationDraft.draftReply ?? '')}
+                              style={{
+                                padding: '.55rem .8rem',
+                                borderRadius: 8,
+                                border: 'none',
+                                background: '#C0392B',
+                                color: '#fff',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Use AI Draft
+                            </button>
+                            {automationDraft.suggestedPriority && automationDraft.suggestedPriority !== selectedTicket.priority && (
+                              <button
+                                type="button"
+                                onClick={() => void updateTicketMeta(selectedTicket.id, { priority: automationDraft.suggestedPriority as TicketPriority })}
+                                style={{
+                                  padding: '.55rem .8rem',
+                                  borderRadius: 8,
+                                  border: '1px solid var(--border)',
+                                  background: 'transparent',
+                                  color: 'var(--white)',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Apply Suggested Priority
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', padding: '.8rem', display: 'flex', flexDirection: 'column', gap: '.55rem' }}>
@@ -548,4 +680,3 @@ export default function AdminSupportPage() {
     </div>
   );
 }
-
