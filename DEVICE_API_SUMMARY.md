@@ -1,66 +1,68 @@
-# Device & Health Data APIs — Completed ✅
+# Device and Health Data APIs - Completed
 
 ## What We Just Built
 
-### 1. **Device Management API** (Fully Functional)
-- **GET `/api/devices`** — List all paired devices with full details
-- **POST `/api/devices`** — Register/pair new device by serial number
-- **PATCH `/api/devices`** — Update device status, firmware, battery level
-- **DELETE `/api/devices`** — Unpair device from account
-- **GET `/api/devices/[id]`** — Get individual device + latest health metrics + 24h stats
-  - Returns: device info, latest reading, avg/max/min heart rate, critical readings count
+### 1. Device Management API
+- `GET /api/devices` - List all paired devices with full details
+- `POST /api/devices` - Register or pair a new device by serial number
+- `PATCH /api/devices` - Update device status, firmware, or battery level
+- `DELETE /api/devices` - Unpair a device from the account
+- `GET /api/devices/[id]` - Get one device with latest health metrics and 24-hour stats
+  - Returns device info, latest reading, heart-rate averages, min/max values, and critical reading count
 
-### 2. **Health Data Stream API** (NEW)
-- **POST `/api/devices/health-readings`** — Submit health reading from device
-  - Accepts: heart_rate, spo2, temperature, respiratory_rate, systolic/diastolic BP, AI risk score
-  - **AUTOMATIC ALERT GENERATION** — Creates critical/warning alerts when thresholds exceeded
+### 2. Health Data Stream API
+- `POST /api/devices/health-readings` - Submit a health reading from a device
+  - Accepts `heart_rate`, `spo2`, `temperature`, `respiratory_rate`, `systolic_bp`, `diastolic_bp`, `ai_risk_score`, and `notes`
+  - Automatically creates warning or critical alerts when thresholds are exceeded
   - Thresholds:
-    - HR > 120 bpm → warning
-    - HR < 40 bpm → warning
-    - SpO2 < 90% → critical
-    - AI Risk > 75% → critical
-    - BP > 180 mmHg → critical
-    - BP < 90 mmHg → warning
-    - Temp > 38.5°C → warning
-    - Temp < 35°C → warning
-
-- **GET `/api/devices/health-readings`** — Get multi-device readings with filtering
-  - Query params: `deviceId`, `limit`, `hours` (default: 24h)
-  - Returns: readings + stats (avg HR/SpO2, max/min values, alert count)
-
-- **GET `/api/devices/[id]/health-readings`** — Get device-specific readings with analytics
+    - HR > 120 bpm -> warning
+    - HR < 40 bpm -> warning
+    - SpO2 < 90% -> critical
+    - AI risk > 75% -> critical
+    - Systolic BP > 180 mmHg -> critical
+    - Systolic BP < 90 mmHg -> warning
+    - Temp > 38.5 C -> warning
+    - Temp < 35 C -> warning
+- `GET /api/devices/health-readings` - Get readings across devices with filtering
+  - Query params: `deviceId`, `limit`, `hours`
+  - Returns readings plus aggregate stats
+- `GET /api/devices/[id]/health-readings` - Get device-specific readings with analytics
   - Query params: `limit`, `hours`
-  - Returns: readings, trends, statistics for that device
+  - Returns readings, trends, and summary statistics for the selected device
 
-### 3. **Alerts API** (Enhanced)
-- **GET `/api/alerts`** — List user's alerts with filtering
-  - Query filters: `severity` (critical/warning), `status` (pending/acknowledged/resolved), `deviceId`
-  - Returns: alert summary with counts by severity
+### 3. Alerts API
+- `GET /api/alerts` - List a user's alerts with filtering
+  - Query filters: `severity`, `status`, `deviceId`
+  - Returns alert summary counts by severity
+- `POST /api/alerts` - Create a manual alert
+- `PATCH /api/alerts` - Acknowledge, resolve, or dismiss an alert
+- `DELETE /api/alerts` - Archive an alert
 
-- **POST `/api/alerts`** — Manually create alert (for manual entries)
-- **PATCH `/api/alerts`** — Acknowledge/resolve/dismiss alert
-- **DELETE `/api/alerts`** — Archive alert
+### 4. Admin Monitoring APIs
+- `GET /api/admin/devices` - Paginated device inventory for admin users
+  - Supports `page`, `limit`, `search`, and `status`
+- `GET /api/admin/health-readings` - Paginated health-reading review for admin users
+  - Supports `page`, `limit`, `hours`, `deviceId`, `userId`, and `minRisk`
+- Admin dashboard tabs now include device and health monitoring views backed by these routes
 
-### 4. **Database Enhancements**
-**Updated `health_readings` table:**
+### 5. Database Enhancements
+Updated `health_readings` columns include:
+
 ```sql
-- heart_rate (INTEGER)
-- spo2 (DECIMAL)
-- temperature (DECIMAL)          ← NEW
-- respiratory_rate (INTEGER)     ← NEW
-- systolic_bp (INTEGER)         ← NEW
-- diastolic_bp (INTEGER)        ← NEW
-- ai_risk_score (DECIMAL)
-- notes (TEXT)                   ← NEW
-- created_at (TIMESTAMP)         ← NEW
+heart_rate INTEGER
+spo2 DECIMAL
+temperature DECIMAL
+respiratory_rate INTEGER
+systolic_bp INTEGER
+diastolic_bp INTEGER
+ai_risk_score DECIMAL
+notes TEXT
+created_at TIMESTAMP
 ```
-Added indexes for fast queries by device and user
 
-**Updated `alerts` table:**
-- Added `message` field for alert descriptions
-- Added indexes for severity/status queries
-
----
+Updated `alerts` now include:
+- `message` for alert descriptions
+- Indexes for severity and status filtering
 
 ## API Usage Examples
 
@@ -76,7 +78,7 @@ curl -X POST http://localhost:3000/api/devices \
   }'
 ```
 
-### Submit Health Reading (With Auto Alerts)
+### Submit a Health Reading
 ```bash
 curl -X POST http://localhost:3000/api/devices/health-readings \
   -H "Authorization: Bearer <token>" \
@@ -94,19 +96,19 @@ curl -X POST http://localhost:3000/api/devices/health-readings \
   }'
 ```
 
-### Get Device Health Data (Last 24 Hours)
+### Get Device Health Data
 ```bash
 curl http://localhost:3000/api/devices/abc-123-def/health-readings?hours=24&limit=100 \
   -H "Authorization: Bearer <token>"
 ```
 
-### Get All Alerts  
+### Get Alerts
 ```bash
 curl "http://localhost:3000/api/alerts?severity=critical&status=pending" \
   -H "Authorization: Bearer <token>"
 ```
 
-### Resolve Critical Alert
+### Resolve an Alert
 ```bash
 curl -X PATCH http://localhost:3000/api/alerts \
   -H "Authorization: Bearer <token>" \
@@ -117,46 +119,24 @@ curl -X PATCH http://localhost:3000/api/alerts \
   }'
 ```
 
----
+## Current Status
 
-## What's Operating
+- Device pairing and management are implemented
+- Health data ingestion is implemented
+- Automatic alert creation is implemented
+- Admin device and health monitoring APIs are implemented
+- Authentication is applied to protected endpoints
 
-✅ **Device pairing/management** — Users can register multiple devices  
-✅ **Health data ingestion** — Sensors submit readings via API  
-✅ **Automatic alert triggers** — Critical readings auto-generate alerts  
-✅ **Real-time trending** — 24h stats (avg, max, min)  
-✅ **Alert acknowledgment** — Users can respond to alerts  
-✅ **Multi-device support** — Query readings per device or across all devices  
-✅ **Authentication** — All endpoints protected with JWT  
-
----
-
-## What's Still TODO
+## Remaining Work
 
 | Task | Priority | Impact |
 |------|----------|--------|
-| SMS/Push notifications for alerts | HIGH | Users won't be notified of critical events |
-| Google OAuth backend | MEDIUM | Social login won't work |
-| Stripe integration | CRITICAL | Payments won't process |
-| WebSocket for real-time data | MEDIUM | Dashboard won't auto-refresh |
-| Device firmware updates | LOW | Can't push OTA updates to devices |
+| SMS or push notifications for alerts | High | Critical events are not actively delivered yet |
+| Stripe integration completion | Critical | Payments flow is not fully complete |
+| Real-time dashboard updates | Medium | Dashboard data does not auto-refresh live |
+| Device firmware update flow | Low | No OTA workflow yet |
 
----
+## Verification
 
-## Next Steps
-
-1. **Test the APIs** — Use the curl examples above with a real auth token
-2. **Integrate with frontend** — Dashboard can now call `/api/devices/me/health-readings`
-3. **Add SMS alerts** — Use Twilio/AWS SNS for critical alerts
-4. **Stripe payment** — Complete the Stripe integration for device orders
-5. **Real device testing** — Hook up actual cardiac sensors to test end-to-end
-
----
-
-## Build Status
-
-✅ **TypeScript compilation**: Passed  
-✅ **All 39 routes built**: No errors  
-✅ **Ready for deployment**: Yes
-
-Run `npm run dev` to test locally or `npm run build && npm start` for production.
+- `npx tsc --noEmit` passed
+- `next build` was started but did not complete within the terminal timeout, so full production build verification is still pending
