@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sql } from '@/lib/db';
 import { withAuth, AuthedRequest } from '@/lib/authMiddleware';
+import { runSupportTicketAutomation } from '@/lib/automationWorkflows';
 
 const CreateTicketSchema = z.object({
   subject: z.string().min(3).max(200),
@@ -119,6 +120,15 @@ export const POST = withAuth(async (req: AuthedRequest) => {
       )
     `;
 
+    const automation = await runSupportTicketAutomation({
+      ticketId: ticket.id,
+      userId: req.user.sub,
+      subject: ticket.subject,
+      description: ticket.description,
+      category: ticket.category,
+      priority: ticket.priority,
+    });
+
     return NextResponse.json(
       {
         success: true,
@@ -135,6 +145,7 @@ export const POST = withAuth(async (req: AuthedRequest) => {
           messageCount: 1,
           lastMessageAt: ticket.created_at,
         },
+        automation,
       },
       { status: 201 }
     );

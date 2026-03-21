@@ -88,7 +88,11 @@ export default function CareCenterPage() {
     const refreshJson = await refreshRes.json();
     if (!refreshRes.ok || !refreshJson?.accessToken) return null;
 
-    setUser(user, refreshJson.accessToken);
+    if (refreshJson?.user) {
+      setUser(refreshJson.user, refreshJson.accessToken);
+    } else {
+      setUser(user, refreshJson.accessToken);
+    }
     return refreshJson.accessToken as string;
   }, [accessToken, user, setUser]);
 

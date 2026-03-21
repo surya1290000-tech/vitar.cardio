@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sql } from '@/lib/db';
 import { withAuth, AuthedRequest } from '@/lib/authMiddleware';
+import { runAssistantUrgentTriage } from '@/lib/automationWorkflows';
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(40),
@@ -166,6 +167,13 @@ export const POST = withAuth(async (req: AuthedRequest) => {
 
     const row = inserted[0] as any;
 
+    const automation = await runAssistantUrgentTriage({
+      userId: req.user.sub,
+      userMessage: data.message,
+      assistantReply: row.message,
+      assistantSeverity: answer.severity,
+    });
+
     return NextResponse.json({
       success: true,
       reply: {
@@ -175,6 +183,7 @@ export const POST = withAuth(async (req: AuthedRequest) => {
         createdAt: row.created_at,
         severity: answer.severity,
       },
+      automation,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

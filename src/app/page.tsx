@@ -9,6 +9,7 @@ import SensorsSection from '@/components/landing/SensorsSection';
 import HowItWorks from '@/components/landing/HowItWorks';
 import AlertDemo from '@/components/landing/AlertDemo';
 import StatsSection from '@/components/landing/StatsSection';
+import HeartIntelSection from '@/components/landing/HeartIntelSection';
 import PricingSection from '@/components/landing/PricingSection';
 import Testimonials from '@/components/landing/Testimonials';
 import AuthDashboard from '@/components/landing/AuthDashboard';
@@ -33,6 +34,7 @@ export default function Home() {
         <HowItWorks />
         <AlertDemo />
         <StatsSection />
+        <HeartIntelSection />
         <PricingSection />
         <Testimonials />
         <AuthDashboard />
