@@ -1,108 +1,98 @@
-# VITAR — Cardiac Health Wearable Platform
+# VITAR
 
-## Full Stack: Next.js + Neon PostgreSQL + Stripe + SendGrid
+Cardiac health wearable platform built with Next.js, Neon PostgreSQL, Stripe, and AI-assisted care workflows.
 
----
+## Project Status
 
-## Step 1 — Install dependencies
+**This project is currently under development.**
+
+VITAR is not yet production-complete. Core modules are being built and refined in phases, including:
+
+- user authentication and profile flows
+- health profile and dashboard features
+- support desk and care center
+- admin portal and automation studio
+- AI workflows for support, assistant triage, and health monitoring
+- payment and subscription flows
+
+Expect active changes in UI, backend services, database schema, and workflow behavior while development continues.
+
+## Current Stack
+
+- Next.js
+- TypeScript
+- Neon PostgreSQL
+- Stripe
+- Resend / email integrations
+- Custom in-app automation engine
+
+## Main App Areas
+
+- Landing page
+- Signup / login / verification
+- User dashboard
+- Care center
+- Admin dashboard
+- Admin support desk
+- Admin automation studio
+
+## Local Setup
+
+### 1. Install dependencies
+
 ```bash
 npm install
 ```
 
-## Step 2 — Set up Neon database (free, 2 mins)
-1. Go to **https://neon.tech** → Sign Up (free)
-2. Click **New Project** → name it `vitar`
-3. Copy the **connection string** (looks like `postgresql://user:pass@host/vitar?sslmode=require`)
-4. Open `.env.local` and paste it as `DATABASE_URL`
+### 2. Configure environment
 
-## Step 3 — Run the database SQL
-1. In your Neon dashboard → click **SQL Editor**
-2. Open `database/setup.sql` from this project
-3. Copy all the SQL → paste into Neon SQL Editor → click **Run**
-4. All 12 tables will be created
+Create `.env.local` and set the required values:
 
-## Step 4 — Generate JWT secrets
-Run this in your terminal and paste both outputs into `.env.local`:
-```bash
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `REFRESH_TOKEN_SECRET`
+- `NEXT_PUBLIC_ADMIN_PASSWORD` or admin server secret
+- `STRIPE_SECRET_KEY`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+
+You can use `.env.example` as the starting reference.
+
+### 3. Set up the database
+
+Run the SQL from:
+
+```text
+database/setup.sql
 ```
 
-## Step 5 — Stripe setup (test mode)
-1. Go to **https://dashboard.stripe.com** → sign up
-2. Go to **Developers → API Keys**
-3. Copy `sk_test_...` → paste as `STRIPE_SECRET_KEY`
-4. Copy `pk_test_...` → paste as `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-5. For webhooks locally: install Stripe CLI → run `stripe listen --forward-to localhost:3000/api/payments/webhook`
-6. Copy the webhook secret → paste as `STRIPE_WEBHOOK_SECRET`
+in the Neon SQL Editor for the same database used by your `DATABASE_URL`.
 
-## Step 6 — SendGrid (optional for email)
-1. Go to **https://sendgrid.com** → sign up (free tier)
-2. Settings → API Keys → Create → copy key
-3. Paste as `SENDGRID_API_KEY`
+### 4. Start the development server
 
-## Step 7 — Run the dev server
 ```bash
 npm run dev
 ```
-Open **http://localhost:3000**
 
----
+Open:
 
-## API Endpoints (all working)
-
-### Auth
-| Method | URL | Description |
-|--------|-----|-------------|
-| POST | `/api/auth/signup` | Register + send OTP email |
-| POST | `/api/auth/login` | Login + get JWT |
-| POST | `/api/auth/verify-otp` | Verify email OTP |
-| POST | `/api/auth/resend-otp` | Resend OTP (rate limited) |
-| POST | `/api/auth/logout` | Clear session |
-| POST | `/api/auth/forgot-password` | Send reset email |
-| POST | `/api/auth/reset-password` | Set new password |
-| POST | `/api/auth/refresh` | Refresh access token |
-
-### User
-| Method | URL | Description |
-|--------|-----|-------------|
-| GET | `/api/user/me` | Get profile + device + subscription |
-| PATCH | `/api/user/me` | Update profile |
-
-### Orders & Payments
-| Method | URL | Description |
-|--------|-----|-------------|
-| POST | `/api/orders` | Create pre-order + Stripe checkout |
-| GET | `/api/orders` | List user's orders |
-| POST | `/api/payments/webhook` | Stripe webhook handler |
-| GET | `/api/payments/subscription` | Get subscription |
-| POST | `/api/payments/subscription` | Subscribe to plan |
-| DELETE | `/api/payments/subscription` | Cancel subscription |
-
----
-
-## Project Structure
-```
-src/
-├── app/
-│   ├── page.tsx              ← Homepage
-│   ├── layout.tsx
-│   ├── globals.css           ← All styles
-│   └── api/
-│       ├── auth/             ← 8 auth routes (REAL — bcrypt + JWT)
-│       ├── user/me/          ← Profile (protected)
-│       ├── orders/           ← Orders + Stripe checkout (protected)
-│       └── payments/         ← Webhook + subscriptions
-├── components/               ← 17 React components
-├── lib/
-│   ├── db.ts                 ← Neon PostgreSQL connection
-│   ├── jwt.ts                ← Token signing/verification
-│   ├── email.ts              ← SendGrid email templates
-│   ├── crypto.ts             ← OTP + secure token utils
-│   ├── stripe.ts             ← Stripe client + price config
-│   └── authMiddleware.ts     ← withAuth() + withRole() guards
-└── middleware/
-database/
-└── setup.sql                 ← Run this in Neon SQL Editor
+```text
+http://localhost:3000
 ```
 
+## Important Admin Routes
+
+- Admin dashboard: `/admin`
+- Admin support desk: `/admin/support`
+- Admin automation studio: `/admin/automation`
+
+## Development Notes
+
+- The project is being actively developed and tested.
+- Some modules may still be experimental or partially automated.
+- Database schema may evolve as new workflows and health features are added.
+- AI workflow tools are internal and custom-built; they are not yet a full visual workflow system like n8n.
+
+## Repository Note
+
+This repository reflects ongoing development work. If you are pulling changes, review the database schema and environment variables before running the app.
