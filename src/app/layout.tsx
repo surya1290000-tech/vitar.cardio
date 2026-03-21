@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ToastProvider from "@/components/ui/ToastProvider";
 import PageTransition from "@/components/ui/PageTransition";
+import FloatingAssistant from "@/components/ui/FloatingAssistant";
 
 export const metadata: Metadata = {
   title: "VITAR — Your Heart. Protected. Always.",
@@ -24,6 +25,7 @@ export default function RootLayout({
       <body>
         <ToastProvider>
           <PageTransition>{children}</PageTransition>
+          <FloatingAssistant />
         </ToastProvider>
       </body>
     </html>
