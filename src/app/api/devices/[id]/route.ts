@@ -6,7 +6,7 @@ import { verifyAccessToken, extractToken } from '@/lib/jwt';
 // Get a single device with its latest health metrics
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify auth
@@ -19,7 +19,7 @@ export async function GET(
     }
     const user = verifyAccessToken(token);
     const userId = user.sub;
-    const { id } = params;
+    const { id } = await params;
 
     // Get device
     const devices = await sql`

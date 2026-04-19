@@ -34,6 +34,13 @@ type AutomationLog = {
 type Snapshot = {
   workflows: Workflow[];
   logs: AutomationLog[];
+  runtimeTemplates: Array<{
+    key: string;
+    module: string;
+    name: string;
+    triggerEvent: string;
+    description: string;
+  }>;
   stats: {
     totalWorkflows: number;
     activeWorkflows: number;
@@ -41,6 +48,22 @@ type Snapshot = {
     urgentRuns24h: number;
   };
   warning?: string;
+};
+
+type RuntimeTemplate = {
+  key: string;
+  module: string;
+  name: string;
+  triggerEvent: string;
+  description: string;
+};
+
+type SimulationResult = {
+  templateKey: string;
+  templateName: string;
+  summary: string;
+  severity: string;
+  result: Record<string, unknown>;
 };
 
 type BuilderNode = {
@@ -179,6 +202,44 @@ function getDefaultBuilderFlow(workflowKey: string, triggerEvent: string): Build
           },
         ],
       };
+  }
+}
+
+function getSimulationPayloadTemplate(templateKey: string) {
+  switch (templateKey) {
+    case 'support_ticket_triage':
+      return JSON.stringify(
+        {
+          subject: 'Device not syncing after chest pain alert',
+          description: 'The wearable is offline and the user mentioned chest pain earlier today.',
+          category: 'general',
+          priority: 'normal',
+        },
+        null,
+        2
+      );
+    case 'health_reading_guardian':
+      return JSON.stringify(
+        {
+          heartRate: 132,
+          spo2: 88,
+          temperature: 38.7,
+          systolicBP: 186,
+          diastolicBP: 98,
+          aiRiskScore: 0.81,
+        },
+        null,
+        2
+      );
+    default:
+      return JSON.stringify(
+        {
+          message: 'I have chest pain and feel short of breath right now.',
+          assistantSeverity: 'urgent',
+        },
+        null,
+        2
+      );
   }
 }
 
@@ -504,8 +565,13 @@ export default function AdminAutomationPage() {
     name: '',
     description: '',
     module: 'support' as 'support' | 'health' | 'assistant',
+    templateKey: 'support_ticket_triage',
     triggerEvent: '',
   });
+  const [simulationTemplateKey, setSimulationTemplateKey] = useState('support_ticket_triage');
+  const [simulationPayload, setSimulationPayload] = useState(getSimulationPayloadTemplate('support_ticket_triage'));
+  const [simulationLoading, setSimulationLoading] = useState(false);
+  const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
 
   const loadSnapshot = async () => {
     setLoading(true);
@@ -569,6 +635,26 @@ export default function AdminAutomationPage() {
     () => (snapshot?.logs ?? []).filter((log) => !selectedWorkflowKey || log.workflowKey === selectedWorkflowKey),
     [selectedWorkflowKey, snapshot?.logs]
   );
+
+  const availableTemplates = useMemo(
+    () => (snapshot?.runtimeTemplates ?? []).filter((template) => template.module === newWorkflow.module),
+    [newWorkflow.module, snapshot?.runtimeTemplates]
+  );
+  const runtimeTemplates = snapshot?.runtimeTemplates ?? [];
+
+  useEffect(() => {
+    if (availableTemplates.length === 0) return;
+
+    const hasCurrentTemplate = availableTemplates.some((template) => template.key === newWorkflow.templateKey);
+    const nextTemplate = hasCurrentTemplate ? availableTemplates.find((template) => template.key === newWorkflow.templateKey) : availableTemplates[0];
+    if (!nextTemplate) return;
+
+    setNewWorkflow((prev) => ({
+      ...prev,
+      templateKey: nextTemplate.key,
+      triggerEvent: prev.triggerEvent || nextTemplate.triggerEvent,
+    }));
+  }, [availableTemplates, newWorkflow.templateKey]);
 
   useEffect(() => {
     if (!selectedWorkflow) {
@@ -722,11 +808,17 @@ export default function AdminAutomationPage() {
     setCreating(true);
     try {
       const workflowKey = newWorkflow.workflowKey.trim().toLowerCase().replace(/\s+/g, '_');
+      const selectedTemplate = availableTemplates.find((template) => template.key === newWorkflow.templateKey) ?? null;
       const payload = {
         ...newWorkflow,
         workflowKey,
+        triggerEvent: newWorkflow.triggerEvent.trim() || selectedTemplate?.triggerEvent || '',
+        templateKey: selectedTemplate?.key,
         config: {
-          builder: getDefaultBuilderFlow(workflowKey, newWorkflow.triggerEvent.trim()),
+          builder: getDefaultBuilderFlow(
+            selectedTemplate?.key || workflowKey,
+            newWorkflow.triggerEvent.trim() || selectedTemplate?.triggerEvent || ''
+          ),
         },
       };
 
@@ -747,6 +839,7 @@ export default function AdminAutomationPage() {
         name: '',
         description: '',
         module: 'support',
+        templateKey: 'support_ticket_triage',
         triggerEvent: '',
       });
       setSelectedWorkflowKey(json.workflow.workflowKey);
@@ -756,6 +849,36 @@ export default function AdminAutomationPage() {
       showToast({ type: 'error', title: 'Create Failed', message: error?.message || 'Could not create workflow.' });
     } finally {
       setCreating(false);
+    }
+  };
+
+  const runSimulation = async () => {
+    setSimulationLoading(true);
+    try {
+      const payload = simulationPayload.trim() ? JSON.parse(simulationPayload) : {};
+      const res = await fetch('/api/admin/automation/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          templateKey: simulationTemplateKey,
+          payload,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error || 'Failed to simulate workflow.');
+      }
+      setSimulationResult(json.result);
+      showToast({ type: 'success', title: 'Simulation Complete', message: json.result.templateName });
+    } catch (error: any) {
+      showToast({
+        type: 'error',
+        title: 'Simulation Failed',
+        message: error?.message || 'Could not run workflow simulation.',
+      });
+    } finally {
+      setSimulationLoading(false);
     }
   };
 
@@ -848,6 +971,9 @@ export default function AdminAutomationPage() {
             <button onClick={() => router.push('/admin/support')} style={{ border: '1px solid rgba(192,57,43,0.35)', background: 'rgba(192,57,43,0.12)', color: '#F2C2BC', borderRadius: 10, padding: '.8rem 1rem', cursor: 'pointer' }}>
               Open Support Desk
             </button>
+            <button onClick={() => router.push('/admin/assistant-training')} style={{ border: '1px solid rgba(39,174,96,0.35)', background: 'rgba(39,174,96,0.12)', color: '#CFF3DF', borderRadius: 10, padding: '.8rem 1rem', cursor: 'pointer' }}>
+              Assistant Training
+            </button>
             <button onClick={() => void loadSnapshot()} style={{ border: 'none', background: '#C0392B', color: 'var(--white)', borderRadius: 10, padding: '.8rem 1rem', cursor: 'pointer' }}>
               Refresh Snapshot
             </button>
@@ -868,7 +994,7 @@ export default function AdminAutomationPage() {
             <div>
               <div style={{ color: '#2F80ED', fontSize: '0.76rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>New workflow</div>
               <div style={{ color: 'var(--muted)', marginTop: '.35rem', lineHeight: 1.6 }}>
-                Create a new visual workflow draft. New drafts are created disabled first so we can shape the flow safely before wiring runtime behavior.
+                Create a new workflow from a runtime template. It will start disabled so we can shape and test the flow safely before switching it on.
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
@@ -886,12 +1012,40 @@ export default function AdminAutomationPage() {
               />
               <select
                 value={newWorkflow.module}
-                onChange={(e) => setNewWorkflow((prev) => ({ ...prev, module: e.target.value as 'support' | 'health' | 'assistant' }))}
+                onChange={(e) => {
+                  const module = e.target.value as 'support' | 'health' | 'assistant';
+                  const moduleTemplates = (snapshot?.runtimeTemplates ?? []).filter((template) => template.module === module);
+                  setNewWorkflow((prev) => ({
+                    ...prev,
+                    module,
+                    templateKey: moduleTemplates[0]?.key ?? '',
+                    triggerEvent: moduleTemplates[0]?.triggerEvent ?? '',
+                  }));
+                }}
                 style={{ background: 'var(--surface-strong)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--white)', padding: '0.85rem 0.95rem' }}
               >
                 <option value="support">Support</option>
                 <option value="health">Health</option>
                 <option value="assistant">Assistant</option>
+              </select>
+              <select
+                value={newWorkflow.templateKey}
+                onChange={(e) => {
+                  const templateKey = e.target.value;
+                  const template = availableTemplates.find((item) => item.key === templateKey);
+                  setNewWorkflow((prev) => ({
+                    ...prev,
+                    templateKey,
+                    triggerEvent: template?.triggerEvent ?? prev.triggerEvent,
+                  }));
+                }}
+                style={{ background: 'var(--surface-strong)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--white)', padding: '0.85rem 0.95rem' }}
+              >
+                {availableTemplates.map((template) => (
+                  <option key={template.key} value={template.key}>
+                    {template.name}
+                  </option>
+                ))}
               </select>
               <input
                 value={newWorkflow.triggerEvent}
@@ -900,6 +1054,12 @@ export default function AdminAutomationPage() {
                 style={{ background: 'var(--surface-strong)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--white)', padding: '0.85rem 0.95rem' }}
               />
             </div>
+            {availableTemplates.length > 0 && (
+              <div style={{ color: 'var(--muted)', fontSize: '.82rem', lineHeight: 1.6 }}>
+                Runtime template: <span style={{ color: 'var(--white)' }}>{availableTemplates.find((template) => template.key === newWorkflow.templateKey)?.name}</span>
+                {' '}· this workflow will run on the same event as the built-in template once you enable it.
+              </div>
+            )}
             <textarea
               value={newWorkflow.description}
               onChange={(e) => setNewWorkflow((prev) => ({ ...prev, description: e.target.value }))}
@@ -909,7 +1069,7 @@ export default function AdminAutomationPage() {
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button type="submit" disabled={creating} style={{ border: 'none', background: '#C0392B', color: 'var(--white)', borderRadius: 10, padding: '.85rem 1rem', cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.7 : 1 }}>
-                {creating ? 'Creating...' : 'Create Workflow Draft'}
+                {creating ? 'Creating...' : 'Create Runtime Workflow'}
               </button>
             </div>
           </form>
@@ -927,6 +1087,84 @@ export default function AdminAutomationPage() {
               <div style={{ marginTop: '0.45rem', fontSize: '1.9rem', fontWeight: 700 }}>{value}</div>
             </div>
           ))}
+        </div>
+
+        <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: 18, padding: '1.25rem', display: 'grid', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ color: '#2F80ED', fontSize: '0.76rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Workflow Test Runner</div>
+              <div style={{ color: 'var(--white)', fontSize: '1rem', marginTop: '.35rem' }}>
+                Simulate support, health, and assistant workflows before testing them with real data.
+              </div>
+              <div style={{ color: 'var(--muted)', marginTop: '.45rem', lineHeight: 1.6 }}>
+                This runner does not write live tickets or health readings. It shows the decision path we would take for a sample payload.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1rem', alignItems: 'start' }}>
+            <div style={{ display: 'grid', gap: '.75rem' }}>
+              <label style={{ display: 'grid', gap: '.45rem' }}>
+                <span style={{ color: 'var(--muted)', fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.08em' }}>Template</span>
+                <select
+                  value={simulationTemplateKey}
+                  onChange={(e) => {
+                    setSimulationTemplateKey(e.target.value);
+                    setSimulationPayload(getSimulationPayloadTemplate(e.target.value));
+                    setSimulationResult(null);
+                  }}
+                  style={{ background: 'var(--surface-strong)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--white)', padding: '.85rem .95rem' }}
+                >
+                  {runtimeTemplates.map((template: RuntimeTemplate) => (
+                    <option key={template.key} value={template.key}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '.9rem', background: 'rgba(255,255,255,0.03)' }}>
+                <div style={{ color: 'var(--muted)', fontSize: '.72rem', textTransform: 'uppercase', letterSpacing: '.08em' }}>Current trigger</div>
+                <div style={{ color: 'var(--white)', marginTop: '.35rem' }}>
+                  {runtimeTemplates.find((template) => template.key === simulationTemplateKey)?.triggerEvent}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void runSimulation()}
+                disabled={simulationLoading}
+                style={{ border: 'none', background: '#C0392B', color: 'var(--white)', borderRadius: 10, padding: '.9rem 1rem', cursor: simulationLoading ? 'not-allowed' : 'pointer', opacity: simulationLoading ? 0.7 : 1 }}
+              >
+                {simulationLoading ? 'Running Simulation...' : 'Run Simulation'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '.9rem' }}>
+              <textarea
+                value={simulationPayload}
+                onChange={(e) => setSimulationPayload(e.target.value)}
+                rows={11}
+                style={{ background: 'var(--surface-strong)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--white)', padding: '1rem', resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.6 }}
+              />
+              {simulationResult ? (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 14, padding: '1rem', background: 'rgba(255,255,255,0.03)', display: 'grid', gap: '.7rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.75rem', flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 700 }}>{simulationResult.templateName}</div>
+                    <span style={{ fontSize: '0.68rem', padding: '.2rem .45rem', borderRadius: 999, background: ['urgent', 'critical'].includes(simulationResult.severity) ? 'rgba(192,57,43,0.14)' : 'rgba(39,174,96,0.14)', color: ['urgent', 'critical'].includes(simulationResult.severity) ? '#F0A39A' : '#8BE3B4', border: `1px solid ${['urgent', 'critical'].includes(simulationResult.severity) ? 'rgba(192,57,43,0.3)' : 'rgba(39,174,96,0.3)'}` }}>
+                      {simulationResult.severity}
+                    </span>
+                  </div>
+                  <div style={{ color: 'var(--muted)', lineHeight: 1.6 }}>{simulationResult.summary}</div>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'rgba(0,0,0,0.18)', borderRadius: 12, padding: '1rem', color: '#F4F4F4', fontSize: '.83rem', lineHeight: 1.6 }}>
+                    {JSON.stringify(simulationResult.result, null, 2)}
+                  </pre>
+                </div>
+              ) : (
+                <div style={{ color: 'var(--muted)', fontSize: '.88rem' }}>
+                  Run a simulation to see severity, suggested actions, and the exact structured output for the selected template.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '340px minmax(0, 1fr)', gap: '1.25rem', alignItems: 'start' }}>

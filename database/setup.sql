@@ -1,9 +1,9 @@
 -- =============================================================
 -- VITAR DATABASE SETUP
--- Run this SQL in your Neon dashboard → SQL Editor
+-- Run this SQL in your Neon dashboard -> SQL Editor
 -- ================================================================
 
--- ── USERS ────────────────────────────────────────────────────────
+-- USERS ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email               VARCHAR(255) UNIQUE NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── OTP TOKENS ───────────────────────────────────────────────────
+-- OTP TOKENS ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS otp_tokens (
   user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   otp_hash    VARCHAR(64) NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS otp_tokens (
   created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── REFRESH TOKENS ───────────────────────────────────────────────
+-- REFRESH TOKENS -------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   token_hash  TEXT NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── PASSWORD RESET TOKENS ────────────────────────────────────────
+-- PASSWORD RESET TOKENS ------------------------------------------------------
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   token       VARCHAR(128) UNIQUE NOT NULL,
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── MEDICAL PROFILES ─────────────────────────────────────────────
+-- MEDICAL PROFILES -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS medical_profiles (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id          UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -66,14 +66,8 @@ CREATE TABLE IF NOT EXISTS medical_profiles (
   created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
 );
-ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS height_cm DECIMAL(5,2);
-ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(5,2);
-ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS sex VARCHAR(20);
-ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS medical_notes TEXT;
-ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS family_history TEXT;
-ALTER TABLE medical_profiles ADD COLUMN IF NOT EXISTS resting_heart_rate INTEGER;
 
--- ── EMERGENCY CONTACTS ───────────────────────────────────────────
+-- EMERGENCY CONTACTS ---------------------------------------------------------
 CREATE TABLE IF NOT EXISTS emergency_contacts (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -87,7 +81,7 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
   created_at    TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── DEVICES ──────────────────────────────────────────────────────
+-- DEVICES -------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS devices (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id          UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -102,7 +96,7 @@ CREATE TABLE IF NOT EXISTS devices (
   updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── HEALTH READINGS ──────────────────────────────────────────────
+-- HEALTH READINGS ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS health_readings (
   id              BIGSERIAL PRIMARY KEY,
   device_id       UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
@@ -127,7 +121,7 @@ CREATE TABLE IF NOT EXISTS health_readings (
 CREATE INDEX IF NOT EXISTS idx_health_user_time ON health_readings(user_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_health_device_time ON health_readings(device_id, recorded_at DESC);
 
--- ── ALERTS ───────────────────────────────────────────────────────
+-- ALERTS --------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS alerts (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id          UUID NOT NULL REFERENCES users(id),
@@ -147,7 +141,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE INDEX IF NOT EXISTS idx_alerts_user_time ON alerts(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity, status);
 
--- ── ORDERS ───────────────────────────────────────────────────────
+-- ORDERS --------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
   id                           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id                      UUID NOT NULL REFERENCES users(id),
@@ -171,7 +165,7 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at                   TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── PAYMENTS ─────────────────────────────────────────────────────
+-- PAYMENTS ------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS payments (
   id                         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id                   UUID REFERENCES orders(id),
@@ -185,7 +179,7 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at                 TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── SUBSCRIPTIONS ────────────────────────────────────────────────
+-- SUBSCRIPTIONS --------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS subscriptions (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id                UUID NOT NULL REFERENCES users(id),
@@ -199,7 +193,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   updated_at             TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- ── CUSTOMER SUPPORT ──────────────────────────────────────────────
+-- CUSTOMER SUPPORT -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS support_tickets (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -223,16 +217,95 @@ CREATE TABLE IF NOT EXISTS support_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_time ON support_messages(ticket_id, created_at ASC);
 
--- ── HEALTH ASSISTANT CHAT ────────────────────────────────────────
+-- HEALTH ASSISTANT CHAT ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS health_assistant_threads (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title        VARCHAR(180) NOT NULL DEFAULT 'Primary Care Thread',
+  is_archived  BOOLEAN NOT NULL DEFAULT false,
+  created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_threads_user_time ON health_assistant_threads(user_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS health_assistant_chats (
   id          BIGSERIAL PRIMARY KEY,
   user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  thread_id   UUID REFERENCES health_assistant_threads(id) ON DELETE SET NULL,
   role        VARCHAR(20) NOT NULL,
   message     TEXT NOT NULL,
+  trace_id    VARCHAR(64),
+  intent      VARCHAR(50),
+  safety_flags TEXT[] DEFAULT '{}',
+  response_source VARCHAR(20),
+  confidence  DECIMAL(4,3),
+  confidence_reason TEXT,
+  latency_ms  INTEGER,
   context     JSONB,
   created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS thread_id UUID REFERENCES health_assistant_threads(id) ON DELETE SET NULL;
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS trace_id VARCHAR(64);
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS intent VARCHAR(50);
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS safety_flags TEXT[] DEFAULT '{}';
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS response_source VARCHAR(20);
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS confidence DECIMAL(4,3);
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS confidence_reason TEXT;
+ALTER TABLE health_assistant_chats ADD COLUMN IF NOT EXISTS latency_ms INTEGER;
 CREATE INDEX IF NOT EXISTS idx_health_assistant_user_time ON health_assistant_chats(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_thread_time ON health_assistant_chats(thread_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_trace_id ON health_assistant_chats(trace_id);
+
+CREATE TABLE IF NOT EXISTS health_assistant_feedback (
+  id               BIGSERIAL PRIMARY KEY,
+  user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assistant_chat_id BIGINT NOT NULL REFERENCES health_assistant_chats(id) ON DELETE CASCADE,
+  helpful          BOOLEAN NOT NULL,
+  comment          TEXT,
+  created_at       TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_feedback_user_time ON health_assistant_feedback(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_feedback_chat ON health_assistant_feedback(assistant_chat_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_health_assistant_feedback_unique ON health_assistant_feedback(user_id, assistant_chat_id);
+
+CREATE TABLE IF NOT EXISTS health_assistant_events (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           UUID REFERENCES users(id) ON DELETE SET NULL,
+  assistant_chat_id BIGINT REFERENCES health_assistant_chats(id) ON DELETE SET NULL,
+  trace_id          VARCHAR(64) NOT NULL,
+  intent            VARCHAR(50) NOT NULL,
+  severity          VARCHAR(20) NOT NULL DEFAULT 'normal',
+  safety_flags      TEXT[] DEFAULT '{}',
+  response_source   VARCHAR(20) NOT NULL DEFAULT 'fallback',
+  model             VARCHAR(120),
+  confidence        DECIMAL(4,3),
+  confidence_reason TEXT,
+  latency_ms        INTEGER,
+  status            VARCHAR(20) NOT NULL DEFAULT 'completed',
+  error             TEXT,
+  payload           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at        TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_events_user_time ON health_assistant_events(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_events_trace ON health_assistant_events(trace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_health_assistant_events_intent_time ON health_assistant_events(intent, created_at DESC);
+
+-- ASSISTANT TRAINING MODULE --------------------------------------------------
+CREATE TABLE IF NOT EXISTS assistant_training_entries (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title         VARCHAR(160) NOT NULL,
+  mode          VARCHAR(40) NOT NULL DEFAULT 'all',
+  priority      INTEGER NOT NULL DEFAULT 50,
+  instructions  TEXT NOT NULL,
+  examples      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  is_enabled    BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT assistant_training_mode_check
+    CHECK (mode IN ('all','urgent_triage','health_guidance','device_support','billing_support','care_planning'))
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_training_mode_enabled ON assistant_training_entries(mode, is_enabled, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_assistant_training_updated_at ON assistant_training_entries(updated_at DESC);
 
 -- AI / AUTOMATION WORKFLOWS
 CREATE TABLE IF NOT EXISTS ai_workflows (
@@ -309,7 +382,7 @@ ON CONFLICT (workflow_key) DO UPDATE SET
   config = COALESCE(ai_workflows.config, '{}'::jsonb) || EXCLUDED.config,
   updated_at = NOW();
 
--- ── NOTIFICATION LOG ─────────────────────────────────────────────
+-- NOTIFICATION LOG -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notification_log (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   alert_id        UUID REFERENCES alerts(id),
@@ -332,7 +405,7 @@ CREATE TABLE IF NOT EXISTS admin_auth_log (
 );
 CREATE INDEX IF NOT EXISTS idx_admin_auth_log_created_at ON admin_auth_log(created_at DESC);
 
--- STRIPE WEBHOOK EVENTS (idempotency)
+-- STRIPE WEBHOOK EVENTS (idempotency) ---------------------------------------
 CREATE TABLE IF NOT EXISTS stripe_webhook_events (
   id          BIGSERIAL PRIMARY KEY,
   event_id    VARCHAR(255) NOT NULL UNIQUE,
@@ -346,13 +419,6 @@ CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_created_at ON stripe_webhoo
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email_notifications BOOLEAN NOT NULL DEFAULT true;
 
-ALTER TABLE health_readings
-  ADD COLUMN IF NOT EXISTS temperature DECIMAL(5,2),
-  ADD COLUMN IF NOT EXISTS respiratory_rate INTEGER,
-  ADD COLUMN IF NOT EXISTS systolic_bp INTEGER,
-  ADD COLUMN IF NOT EXISTS diastolic_bp INTEGER,
-  ADD COLUMN IF NOT EXISTS notes TEXT,
-  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
 
 ALTER TABLE alerts
   ADD COLUMN IF NOT EXISTS message TEXT;
@@ -365,3 +431,5 @@ CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity, status);
 -- ALL TABLES CREATED SUCCESSFULLY
 -- Database setup complete! All tables are ready to use.
 -- ================================================================
+
+

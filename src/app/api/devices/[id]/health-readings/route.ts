@@ -6,7 +6,7 @@ import { verifyAccessToken, extractToken } from '@/lib/jwt';
 // Get health readings for a specific device
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify auth
@@ -19,7 +19,7 @@ export async function GET(
     }
     const user = verifyAccessToken(token);
     const userId = user.sub;
-    const { id } = params;
+    const { id } = await params;
 
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000);

@@ -46,6 +46,27 @@ interface Stats {
   activeAutomationWorkflows?: number;
   automationRuns24h?: number;
   urgentAutomationRuns24h?: number;
+  assistantTotalChats?: number;
+  assistantFallbackRate?: number;
+  assistantEscalationRate?: number;
+  assistantAvgLatencyMs?: number;
+  assistantTopIntents?: Array<{ intent: string; count: number }>;
+}
+
+interface AssistantEvent {
+  id: string;
+  trace_id: string;
+  intent: string;
+  severity: string;
+  safety_flags: string[];
+  response_source: string;
+  model: string | null;
+  confidence: number | null;
+  confidence_reason: string | null;
+  latency_ms: number | null;
+  status: string;
+  error: string | null;
+  created_at: string;
 }
 
 interface Payment {
@@ -176,6 +197,7 @@ export default function AdminPage() {
   const [healthReadings, setHealthReadings] = useState<HealthReading[]>([]);
   const [automationWorkflows, setAutomationWorkflows] = useState<AutomationWorkflow[]>([]);
   const [automationLogs, setAutomationLogs] = useState<AutomationLog[]>([]);
+  const [assistantEvents, setAssistantEvents] = useState<AssistantEvent[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [healthLoading, setHealthLoading] = useState(false);
   const [automationLoading, setAutomationLoading] = useState(false);
@@ -230,7 +252,8 @@ export default function AdminPage() {
       setOrders([]);
       setPayments([]);
       setAlerts([]);
-      setAdminAuthLogs([]);
+        setAdminAuthLogs([]);
+        setAssistantEvents([]);
       setDevices([]);
       setHealthReadings([]);
       setAutomationWorkflows([]);
@@ -287,6 +310,7 @@ export default function AdminPage() {
         setPayments(json.payments || []);
         setAlerts(json.alerts || []);
         setAdminAuthLogs(json.adminAuthLogs || []);
+        setAssistantEvents(json.assistantEvents || []);
         setStats(json.stats || null);
         setReconciliation(json.reconciliation || null);
       } else {
@@ -725,6 +749,20 @@ export default function AdminPage() {
             Automation Studio
           </button>
           <button
+            onClick={() => router.push('/admin/assistant-training')}
+            style={{
+              background: 'rgba(39,174,96,0.12)',
+              border: '1px solid rgba(39,174,96,0.32)',
+              borderRadius: '3px',
+              color: '#BCEFD2',
+              padding: '0.75rem 1rem',
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+            }}
+          >
+            Assistant Training
+          </button>
+          <button
             onClick={() => router.push('/admin/support')}
             style={{
               background: 'rgba(192,57,43,0.1)',
@@ -886,6 +924,9 @@ export default function AdminPage() {
                 { label: 'Open Tickets', value: stats?.openSupportTickets ?? 0, color: '#F39C12' },
                 { label: 'In Progress Tickets', value: stats?.inProgressSupportTickets ?? 0, color: '#3498DB' },
                 { label: 'Urgent Tickets', value: stats?.urgentSupportTickets ?? 0, color: '#E74C3C' },
+                { label: 'Assistant Chats (30d)', value: stats?.assistantTotalChats ?? 0, color: '#8E44AD' },
+                { label: 'Assistant Fallback %', value: `${stats?.assistantFallbackRate ?? 0}%`, color: '#F39C12' },
+                { label: 'Assistant Escalation %', value: `${stats?.assistantEscalationRate ?? 0}%`, color: '#C0392B' },
                 { label: 'Confirmed w/o Payment', value: stats?.confirmedWithoutPayment ?? reconciliation?.confirmedWithoutPayment ?? 0, color: '#F39C12' },
                 { label: 'Orphan Payments', value: stats?.orphanPayments ?? reconciliation?.orphanPayments ?? 0, color: '#9B59B6' },
               ].map((card, i) => (
@@ -1347,6 +1388,93 @@ export default function AdminPage() {
 
             <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
               <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
+                Assistant Quality & Safety
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Avg Latency
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#3498DB' }}>
+                    {stats?.assistantAvgLatencyMs ?? 0} ms
+                  </div>
+                </div>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Fallback Rate
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#F39C12' }}>
+                    {stats?.assistantFallbackRate ?? 0}%
+                  </div>
+                </div>
+                <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '6px', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem' }}>
+                    Escalation Rate
+                  </div>
+                  <div style={{ fontSize: '1.6rem', fontFamily: "'DM Serif Display', serif", color: '#C0392B' }}>
+                    {stats?.assistantEscalationRate ?? 0}%
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', marginBottom: '1rem' }}>
+                <div style={{ padding: '0.95rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.74rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Top Assistant Intents
+                </div>
+                {!stats?.assistantTopIntents?.length ? (
+                  <div style={{ padding: '1rem', color: 'var(--muted)', fontSize: '0.82rem' }}>No assistant intent data yet.</div>
+                ) : (
+                  <div style={{ display: 'grid' }}>
+                    {stats.assistantTopIntents.map((intent, index) => (
+                      <div key={`${intent.intent}-${index}`} style={{ padding: '0.85rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--white)', textTransform: 'capitalize' }}>{intent.intent.replace(/_/g, ' ')}</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--muted)' }}>{intent.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ background: 'var(--deep)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{ padding: '0.95rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.74rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Recent Assistant Events
+                </div>
+                {assistantEvents.length === 0 ? (
+                  <div style={{ padding: '1rem', color: 'var(--muted)', fontSize: '0.82rem' }}>No assistant events yet.</div>
+                ) : (
+                  <div style={{ display: 'grid' }}>
+                    {assistantEvents.slice(0, 8).map((event) => (
+                      <div key={event.id} style={{ padding: '0.95rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: '0.84rem', color: 'var(--white)' }}>
+                            {event.intent?.replace(/_/g, ' ') || 'unknown intent'} • trace {event.trace_id?.slice(0, 10)}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
+                            {new Date(event.created_at).toLocaleString()}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: '0.35rem', fontSize: '0.76rem', color: 'var(--muted)' }}>
+                          severity: {event.severity} • source: {event.response_source} • latency: {event.latency_ms ?? 'n/a'} ms
+                        </div>
+                        {Array.isArray(event.safety_flags) && event.safety_flags.length > 0 ? (
+                          <div style={{ marginTop: '0.35rem', fontSize: '0.74rem', color: '#C0392B' }}>
+                            safety flags: {event.safety_flags.join(', ')}
+                          </div>
+                        ) : null}
+                        {event.error ? (
+                          <div style={{ marginTop: '0.35rem', fontSize: '0.74rem', color: '#E67E22' }}>
+                            {event.error}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--graphite)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
+              <h3 style={{ fontSize: '0.82rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem' }}>
                 Support Operations
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'stretch' }}>
@@ -1409,6 +1537,24 @@ export default function AdminPage() {
                     }}
                   >
                     Open Automation Studio
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button
+                    onClick={() => router.push('/admin/assistant-training')}
+                    style={{
+                      width: '100%',
+                      background: 'rgba(39,174,96,0.14)',
+                      border: '1px solid rgba(39,174,96,0.30)',
+                      borderRadius: '6px',
+                      color: '#CFF3DF',
+                      fontSize: '0.78rem',
+                      padding: '0.95rem 1rem',
+                      letterSpacing: '0.06em',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Open Assistant Training
                   </button>
                 </div>
               </div>

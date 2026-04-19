@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getAdminLoginSecret, isAdminRequest } from '@/lib/adminAuth';
-import { createWorkflowDraft, getAutomationAdminSnapshot, updateWorkflowEnabledState, updateWorkflowSettings } from '@/lib/automationWorkflows';
+import { createWorkflowDraft, getAutomationAdminSnapshot, getRuntimeTemplateOptions, updateWorkflowEnabledState, updateWorkflowSettings } from '@/lib/automationWorkflows';
 
 const CreateSchema = z.object({
   workflowKey: z.string().min(3).max(80).regex(/^[a-z0-9_]+$/),
@@ -9,6 +9,7 @@ const CreateSchema = z.object({
   description: z.string().min(8).max(500),
   module: z.enum(['support', 'health', 'assistant']),
   triggerEvent: z.string().min(3).max(80),
+  templateKey: z.enum(['support_ticket_triage', 'health_reading_guardian', 'assistant_urgent_triage']).optional(),
   config: z.record(z.any()).optional(),
 });
 
@@ -31,7 +32,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const snapshot = await getAutomationAdminSnapshot();
-    return NextResponse.json(snapshot);
+    return NextResponse.json({
+      ...snapshot,
+      runtimeTemplates: getRuntimeTemplateOptions(),
+    });
   } catch (error) {
     console.error('[ADMIN AUTOMATION WORKFLOWS GET ERROR]', error);
     return NextResponse.json({ error: 'Failed to load automation workflows.' }, { status: 500 });
@@ -86,6 +90,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const data = CreateSchema.parse(body);
+    const selectedTemplate = data.templateKey
+      ? getRuntimeTemplateOptions().find((template) => template.key === data.templateKey)
+      : null;
+
+    if (selectedTemplate && selectedTemplate.module !== data.module) {
+      return NextResponse.json({ error: 'Selected runtime template does not match the chosen module.' }, { status: 400 });
+    }
 
     const workflow = await createWorkflowDraft({
       workflowKey: data.workflowKey,
@@ -93,6 +104,7 @@ export async function POST(req: NextRequest) {
       description: data.description,
       module: data.module,
       triggerEvent: data.triggerEvent,
+      templateKey: data.templateKey,
       config: data.config,
     });
 

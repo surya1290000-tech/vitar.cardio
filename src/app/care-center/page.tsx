@@ -15,6 +15,24 @@ type AssistantMessage = {
   message: string;
   createdAt: string;
   severity?: 'normal' | 'high' | 'urgent';
+  mode?: string;
+  title?: string;
+  summary?: string;
+  sections?: Array<{
+    label: string;
+    content: string;
+  }>;
+  nextSteps?: string[];
+  traceId?: string;
+  intent?: string;
+  safetyFlags?: string[];
+  confidence?: number;
+  confidenceReason?: string;
+  actions?: Array<{
+    type: 'open_dashboard' | 'open_care_center' | 'create_support_ticket' | 'summarize_readings';
+    label: string;
+    payload?: Record<string, unknown>;
+  }>;
 };
 
 type SupportTicket = {
@@ -39,6 +57,8 @@ type SupportMessage = {
 
 const quickPrompts = [
   'I feel chest discomfort. What should I do now?',
+  'My device is not syncing. Help me troubleshoot it.',
+  'My payment failed. Help me fix billing.',
   'Give me a 24-hour heart-health checklist.',
   'How should I react if risk score goes high?',
 ];
@@ -53,6 +73,8 @@ export default function CareCenterPage() {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantSending, setAssistantSending] = useState(false);
   const [assistantWarning, setAssistantWarning] = useState('');
+  const [assistantFeedbackSubmitting, setAssistantFeedbackSubmitting] = useState<Record<string, boolean>>({});
+  const [assistantFeedbackGiven, setAssistantFeedbackGiven] = useState<Record<string, boolean>>({});
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -205,6 +227,31 @@ export default function CareCenterPage() {
     };
   }, [selectedTicketId, getAccessToken, loadTicketMessages]);
 
+  useEffect(() => {
+    const rawDraft = window.localStorage.getItem('vitar-care-ticket-draft');
+    if (!rawDraft) return;
+
+    try {
+      const draft = JSON.parse(rawDraft) as Partial<typeof ticketForm>;
+      setTicketForm((prev) => ({
+        ...prev,
+        subject: typeof draft.subject === 'string' ? draft.subject : prev.subject,
+        category: typeof draft.category === 'string' ? draft.category : prev.category,
+        priority: typeof draft.priority === 'string' ? draft.priority : prev.priority,
+        description: typeof draft.description === 'string' ? draft.description : prev.description,
+      }));
+      showToast({
+        type: 'info',
+        title: 'Support Draft Ready',
+        message: 'The assistant prepared a support ticket draft for you below.',
+      });
+    } catch {
+      // ignore malformed draft
+    } finally {
+      window.localStorage.removeItem('vitar-care-ticket-draft');
+    }
+  }, [showToast]);
+
   const handleAssistantSend = async (e?: FormEvent, preset?: string) => {
     if (e) e.preventDefault();
     const nextMessage = (preset ?? assistantInput).trim();
@@ -240,9 +287,24 @@ export default function CareCenterPage() {
       if (!res.ok) {
         throw new Error(json?.error || 'Assistant request failed.');
       }
+      const normalizedReply =
+        json?.reply ??
+        (json?.response
+          ? {
+              id: Date.now(),
+              role: 'assistant' as const,
+              message: json.response.reply,
+              createdAt: new Date().toISOString(),
+              sections: json.response.sections,
+              nextSteps: json.response.nextSteps,
+              actions: json.response.actions,
+              safetyFlags: json.response.safetyFlags,
+              traceId: json.response.traceId,
+            }
+          : null);
 
-      if (json?.reply) {
-        setAssistantMessages((prev) => [...prev, json.reply]);
+      if (normalizedReply) {
+        setAssistantMessages((prev) => [...prev, normalizedReply]);
       }
     } catch (error: any) {
       setAssistantMessages((prev) => prev.filter((msg) => msg.id !== optimisticId));
@@ -250,6 +312,134 @@ export default function CareCenterPage() {
       showToast({ type: 'error', title: 'Assistant Error', message: error?.message || 'Assistant request failed.' });
     } finally {
       setAssistantSending(false);
+    }
+  };
+
+  const submitAssistantFeedback = useCallback(
+    async (assistantChatId: number | string, helpful: boolean) => {
+      const key = String(assistantChatId);
+      if (!/^\d+$/.test(key)) return;
+      const comment = !helpful ? window.prompt('Optional: what should the assistant improve?', '') ?? '' : '';
+      setAssistantFeedbackSubmitting((prev) => ({ ...prev, [key]: true }));
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          router.push('/login');
+          return;
+        }
+        const res = await fetch('/api/health-assistant/feedback', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            assistantChatId: Number(key),
+            helpful,
+            comment: comment.trim() || undefined,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json?.error || 'Feedback save failed.');
+        }
+        setAssistantFeedbackGiven((prev) => ({ ...prev, [key]: true }));
+        showToast({
+          type: 'success',
+          title: 'Feedback Saved',
+          message: helpful ? 'Marked as helpful.' : 'Marked as not helpful.',
+        });
+      } catch (error: any) {
+        showToast({
+          type: 'error',
+          title: 'Feedback Failed',
+          message: error?.message || 'Could not save feedback.',
+        });
+      } finally {
+        setAssistantFeedbackSubmitting((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [getAccessToken, router, showToast],
+  );
+
+  const handleAssistantAction = async (action: NonNullable<AssistantMessage['actions']>[number]) => {
+    if (action.type === 'open_dashboard') {
+      router.push('/dashboard');
+      return;
+    }
+
+    if (action.type === 'open_care_center') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    if (action.type === 'summarize_readings') {
+      await handleAssistantSend(undefined, 'Summarize my latest heart readings.');
+      return;
+    }
+
+    if (action.type === 'create_support_ticket' && action.payload) {
+      if (action.payload.autoCreate) {
+        try {
+          const token = await getAccessToken();
+          if (!token) {
+            router.push('/login');
+            return;
+          }
+
+          const res = await fetch('/api/support/tickets', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              subject: action.payload.subject,
+              category: action.payload.category,
+              priority: action.payload.priority,
+              description: action.payload.description,
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            throw new Error(json?.error || 'Failed to create support ticket.');
+          }
+
+          showToast({
+            type: 'success',
+            title: 'Support Ticket Created',
+            message: 'The assistant created a support ticket for you.',
+          });
+          await loadTickets(token);
+          if (json?.ticket?.id) {
+            setSelectedTicketId(json.ticket.id);
+            await loadTicketMessages(token, json.ticket.id, false);
+          }
+          return;
+        } catch (error: any) {
+          showToast({
+            type: 'error',
+            title: 'Ticket Creation Failed',
+            message: error?.message || 'Could not create support ticket.',
+          });
+          return;
+        }
+      }
+
+      setTicketForm((prev) => ({
+        ...prev,
+        subject: typeof action.payload?.subject === 'string' ? action.payload.subject : prev.subject,
+        category: typeof action.payload?.category === 'string' ? action.payload.category : prev.category,
+        priority: typeof action.payload?.priority === 'string' ? action.payload.priority : prev.priority,
+        description: typeof action.payload?.description === 'string' ? action.payload.description : prev.description,
+      }));
+      showToast({
+        type: 'info',
+        title: 'Ticket Draft Added',
+        message: 'The support ticket form below has been prefilled for you.',
+      });
+      const supportSection = document.querySelector('.support-card');
+      supportSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
@@ -366,6 +556,15 @@ export default function CareCenterPage() {
             </div>
 
             {assistantWarning && <p className="muted" style={{ color: '#E67E22' }}>{assistantWarning}</p>}
+            {assistantWarning && (
+              <button type="button" onClick={() => void (async () => {
+                const token = await getAccessToken();
+                if (!token) return;
+                await loadAssistantHistory(token);
+              })()}>
+                Retry loading assistant
+              </button>
+            )}
 
             <div className="assistant-quick-prompts">
               {quickPrompts.map((prompt) => (
@@ -387,7 +586,72 @@ export default function CareCenterPage() {
                       <strong>{msg.role === 'assistant' ? 'VITAR Assistant' : 'You'}</strong>
                       <time>{new Date(msg.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</time>
                     </div>
+                    {msg.role === 'assistant' && (msg.title || msg.mode) ? (
+                      <div className="assistant-msg-meta">
+                        {msg.title ? <span className="assistant-msg-title">{msg.title}</span> : null}
+                        {msg.mode ? (
+                          <span className="assistant-msg-mode">
+                            {msg.mode.replace(/_/g, ' ')}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {msg.role === 'assistant' && msg.summary ? (
+                      <div className="assistant-msg-summary">{msg.summary}</div>
+                    ) : null}
                     <p>{msg.message}</p>
+                    {msg.role === 'assistant' && typeof msg.confidence === 'number' ? (
+                      <div className="assistant-msg-confidence">Confidence {Math.round(msg.confidence * 100)}%</div>
+                    ) : null}
+                    {msg.role === 'assistant' && Array.isArray(msg.sections) && msg.sections.length > 0 ? (
+                      <div className="assistant-msg-sections">
+                        {msg.sections.slice(0, 3).map((section) => (
+                          <div key={`${msg.id}-${section.label}`} className="assistant-msg-section">
+                            <strong>{section.label}</strong>
+                            <p>{section.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {msg.role === 'assistant' && Array.isArray(msg.nextSteps) && msg.nextSteps.length > 0 ? (
+                      <ul className="assistant-msg-steps">
+                        {msg.nextSteps.slice(0, 3).map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {msg.role === 'assistant' && Array.isArray(msg.actions) && msg.actions.length > 0 ? (
+                      <div className="assistant-msg-actions">
+                        {msg.actions.map((action) => (
+                          <button
+                            key={`${msg.id}-${action.type}-${action.label}`}
+                            type="button"
+                            onClick={() => void handleAssistantAction(action)}
+                            className="assistant-msg-action"
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {msg.role === 'assistant' ? (
+                      <div className="assistant-msg-feedback">
+                        <button
+                          type="button"
+                          onClick={() => void submitAssistantFeedback(msg.id, true)}
+                          disabled={assistantFeedbackSubmitting[String(msg.id)] || assistantFeedbackGiven[String(msg.id)]}
+                        >
+                          Helpful
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void submitAssistantFeedback(msg.id, false)}
+                          disabled={assistantFeedbackSubmitting[String(msg.id)] || assistantFeedbackGiven[String(msg.id)]}
+                        >
+                          Not Helpful
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ))
               )}

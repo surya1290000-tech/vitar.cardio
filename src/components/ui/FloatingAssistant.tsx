@@ -11,11 +11,31 @@ type AssistantMessage = {
   message: string;
   createdAt: string;
   severity?: 'normal' | 'high' | 'urgent' | string;
+  mode?: string;
+  title?: string;
+  summary?: string;
+  sections?: Array<{
+    label: string;
+    content: string;
+  }>;
+  nextSteps?: string[];
+  traceId?: string;
+  intent?: string;
+  safetyFlags?: string[];
+  confidence?: number;
+  confidenceReason?: string;
+  actions?: Array<{
+    type: 'open_dashboard' | 'open_care_center' | 'create_support_ticket' | 'summarize_readings';
+    label: string;
+    payload?: Record<string, unknown>;
+  }>;
 };
 
 const quickPrompts = [
   'I feel chest discomfort. What should I do right now?',
   'Summarize my latest heart readings.',
+  'My device is not syncing. Help me troubleshoot it.',
+  'My payment failed. Help me fix billing.',
   'Give me a simple heart-health routine for today.',
 ];
 
@@ -34,6 +54,8 @@ export default function FloatingAssistant() {
   const [sending, setSending] = useState(false);
   const [warning, setWarning] = useState('');
   const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState<Record<string, boolean>>({});
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, boolean>>({});
 
   const shouldHide = useMemo(() => {
     if (!pathname) return false;
@@ -87,6 +109,52 @@ export default function FloatingAssistant() {
       setLoadingHistory(false);
     }
   }, [ensureAccessToken, isAuthenticated]);
+
+  const submitFeedback = useCallback(
+    async (assistantChatId: number | string, helpful: boolean) => {
+      const key = String(assistantChatId);
+      if (!/^\d+$/.test(key)) return;
+      const comment = !helpful ? window.prompt('Optional: tell us what was missing in this reply.', '') ?? '' : '';
+      setFeedbackSubmitting((prev) => ({ ...prev, [key]: true }));
+      try {
+        const token = await ensureAccessToken();
+        if (!token) {
+          throw new Error('Your session expired. Please sign in again.');
+        }
+        const res = await fetch('/api/health-assistant/feedback', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            assistantChatId: Number(key),
+            helpful,
+            comment: comment.trim() || undefined,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json?.error || 'Feedback save failed.');
+        }
+        setFeedbackGiven((prev) => ({ ...prev, [key]: true }));
+        showToast({
+          type: 'success',
+          title: 'Feedback Saved',
+          message: helpful ? 'Thanks — this response is marked helpful.' : 'Thanks — we will improve this response.',
+        });
+      } catch (error: any) {
+        showToast({
+          type: 'error',
+          title: 'Feedback Failed',
+          message: error?.message || 'Could not save feedback.',
+        });
+      } finally {
+        setFeedbackSubmitting((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [ensureAccessToken, showToast],
+  );
 
   useEffect(() => {
     if (isOpen && isAuthenticated && !hasLoadedHistory) {
@@ -151,10 +219,25 @@ export default function FloatingAssistant() {
       if (!res.ok) {
         throw new Error(json?.error || 'Assistant request failed.');
       }
+      const normalizedReply =
+        json?.reply ??
+        (json?.response
+          ? {
+              id: `reply-${Date.now()}`,
+              role: 'assistant' as const,
+              message: json.response.reply,
+              createdAt: new Date().toISOString(),
+              sections: json.response.sections,
+              nextSteps: json.response.nextSteps,
+              actions: json.response.actions,
+              safetyFlags: json.response.safetyFlags,
+              traceId: json.response.traceId,
+            }
+          : null);
 
       setMessages((prev) => {
         const withoutOptimistic = prev.filter((item) => item.id !== optimisticId);
-        return json?.reply ? [...withoutOptimistic, optimisticMessage, json.reply] : withoutOptimistic;
+        return normalizedReply ? [...withoutOptimistic, optimisticMessage, normalizedReply] : withoutOptimistic;
       });
     } catch (error: any) {
       setMessages((prev) => prev.filter((item) => item.id !== optimisticId));
@@ -166,6 +249,74 @@ export default function FloatingAssistant() {
       });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleAssistantAction = async (action: NonNullable<AssistantMessage['actions']>[number]) => {
+    if (action.type === 'open_dashboard') {
+      router.push('/dashboard');
+      return;
+    }
+
+    if (action.type === 'open_care_center') {
+      router.push('/care-center');
+      return;
+    }
+
+    if (action.type === 'create_support_ticket') {
+      if (action.payload?.autoCreate) {
+        try {
+          const token = await ensureAccessToken();
+          if (!token) {
+            throw new Error('Your session expired. Please sign in again.');
+          }
+
+          const res = await fetch('/api/support/tickets', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              subject: action.payload.subject,
+              category: action.payload.category,
+              priority: action.payload.priority,
+              description: action.payload.description,
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            throw new Error(json?.error || 'Failed to create support ticket.');
+          }
+
+          showToast({
+            type: 'success',
+            title: 'Support Ticket Created',
+            message: action.payload.category === 'billing' ? 'Billing support ticket is ready in care center.' : 'Device support ticket is ready in care center.',
+          });
+          router.push('/care-center');
+          return;
+        } catch (error: any) {
+          showToast({
+            type: 'error',
+            title: 'Ticket Creation Failed',
+            message: error?.message || 'Could not create support ticket.',
+          });
+          return;
+        }
+      }
+
+      if (action.payload) {
+        const payload = { ...action.payload };
+        delete payload.autoCreate;
+        window.localStorage.setItem('vitar-care-ticket-draft', JSON.stringify(payload));
+      }
+      router.push('/care-center');
+      return;
+    }
+
+    if (action.type === 'summarize_readings') {
+      await handleSend(undefined, 'Summarize my latest heart readings.');
     }
   };
 
@@ -206,6 +357,16 @@ export default function FloatingAssistant() {
                 </div>
 
                 {warning ? <div className="floating-assistant-warning">{warning}</div> : null}
+                {warning ? (
+                  <button
+                    type="button"
+                    className="floating-prompt-chip"
+                    onClick={() => void loadHistory()}
+                    disabled={loadingHistory}
+                  >
+                    {loadingHistory ? 'Retrying...' : 'Retry Loading'}
+                  </button>
+                ) : null}
 
                 <div className="floating-assistant-messages">
                   {loadingHistory ? (
@@ -226,7 +387,71 @@ export default function FloatingAssistant() {
                           <span>{message.role === 'assistant' ? 'VITAR Care' : 'You'}</span>
                           <time>{new Date(message.createdAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</time>
                         </div>
+                        {message.role === 'assistant' && (message.title || message.mode) ? (
+                          <div className="floating-message-meta">
+                            {message.title ? <strong>{message.title}</strong> : null}
+                            {message.mode ? <span>{message.mode.replace(/_/g, ' ')}</span> : null}
+                          </div>
+                        ) : null}
+                        {message.role === 'assistant' && message.summary ? (
+                          <div className="floating-message-summary">{message.summary}</div>
+                        ) : null}
                         <p>{message.message}</p>
+                        {message.role === 'assistant' && typeof message.confidence === 'number' ? (
+                          <div className="floating-message-confidence">
+                            Confidence {Math.round(message.confidence * 100)}%
+                          </div>
+                        ) : null}
+                        {message.role === 'assistant' && Array.isArray(message.sections) && message.sections.length > 0 ? (
+                          <div className="floating-message-sections">
+                            {message.sections.slice(0, 3).map((section) => (
+                              <div key={`${message.id}-${section.label}`} className="floating-message-section">
+                                <strong>{section.label}</strong>
+                                <p>{section.content}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {message.role === 'assistant' && Array.isArray(message.nextSteps) && message.nextSteps.length > 0 ? (
+                          <ul className="floating-message-steps">
+                            {message.nextSteps.slice(0, 3).map((step) => (
+                              <li key={step}>{step}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {message.role === 'assistant' && Array.isArray(message.actions) && message.actions.length > 0 ? (
+                          <div className="floating-message-actions">
+                            {message.actions.map((action) => (
+                              <button
+                                key={`${message.id}-${action.type}-${action.label}`}
+                                type="button"
+                                className="floating-message-action"
+                                onClick={() => void handleAssistantAction(action)}
+                                disabled={sending}
+                              >
+                                {action.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {message.role === 'assistant' ? (
+                          <div className="floating-message-feedback">
+                            <button
+                              type="button"
+                              disabled={feedbackGiven[String(message.id)] || feedbackSubmitting[String(message.id)]}
+                              onClick={() => void submitFeedback(message.id, true)}
+                            >
+                              Helpful
+                            </button>
+                            <button
+                              type="button"
+                              disabled={feedbackGiven[String(message.id)] || feedbackSubmitting[String(message.id)]}
+                              onClick={() => void submitFeedback(message.id, false)}
+                            >
+                              Not Helpful
+                            </button>
+                          </div>
+                        ) : null}
                       </article>
                     ))
                   )}

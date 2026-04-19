@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sql } from '@/lib/db';
 import { withAuth, AuthedRequest } from '@/lib/authMiddleware';
+import { runHealthReadingAutomation } from '@/lib/automationWorkflows';
 
 // ── SCHEMAS ────────────────────────────────────────────────────
 
@@ -86,12 +87,24 @@ export const POST = withAuth(async (req: AuthedRequest) => {
 
     // Check if reading creates critical alert
     await checkAndCreateAlert(data.deviceId, req.user.sub, reading[0] as any);
+    const automation = await runHealthReadingAutomation({
+      readingId: (reading[0] as any).id,
+      userId: req.user.sub,
+      deviceId: data.deviceId,
+      heartRate: (reading[0] as any).heartRate ?? null,
+      spo2: (reading[0] as any).spo2 ?? null,
+      temperature: (reading[0] as any).temperature ?? null,
+      systolicBP: (reading[0] as any).systolicBP ?? null,
+      diastolicBP: (reading[0] as any).diastolicBP ?? null,
+      aiRiskScore: (reading[0] as any).aiRiskScore ?? null,
+    });
 
     return NextResponse.json(
       {
         success: true,
         message: 'Health reading recorded successfully',
         reading: reading[0],
+        automation,
       },
       { status: 201 }
     );

@@ -35,6 +35,12 @@ export async function GET(req: NextRequest) {
     let activeAutomationWorkflows = 0;
     let automationRuns24h = 0;
     let urgentAutomationRuns24h = 0;
+    let assistantTotalChats = 0;
+    let assistantFallbackRate = 0;
+    let assistantEscalationRate = 0;
+    let assistantAvgLatencyMs = 0;
+    let assistantTopIntents: Array<{ intent: string; count: number }> = [];
+    let assistantEvents: any[] = [];
 
     // Keep admin users view working even if orders table/query has issues.
     try {
@@ -200,6 +206,58 @@ export async function GET(req: NextRequest) {
       console.error('[ADMIN AUTOMATION LOG COUNT ERROR]', automationCountError);
     }
 
+    try {
+      const assistantCounts = await sql`
+        SELECT
+          COUNT(*)::int AS total_chats,
+          COUNT(*) FILTER (WHERE response_source = 'fallback')::int AS fallback_chats,
+          COUNT(*) FILTER (WHERE severity IN ('urgent', 'high'))::int AS escalated_chats,
+          COALESCE(AVG(latency_ms), 0)::float AS avg_latency_ms
+        FROM health_assistant_events
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+      `;
+      assistantTotalChats = (assistantCounts[0] as any)?.total_chats ?? 0;
+      const fallbackChats = (assistantCounts[0] as any)?.fallback_chats ?? 0;
+      const escalatedChats = (assistantCounts[0] as any)?.escalated_chats ?? 0;
+      assistantAvgLatencyMs = Math.round((assistantCounts[0] as any)?.avg_latency_ms ?? 0);
+      assistantFallbackRate = assistantTotalChats > 0 ? Number(((fallbackChats / assistantTotalChats) * 100).toFixed(1)) : 0;
+      assistantEscalationRate = assistantTotalChats > 0 ? Number(((escalatedChats / assistantTotalChats) * 100).toFixed(1)) : 0;
+    } catch (assistantCountError) {
+      console.error('[ADMIN ASSISTANT COUNT ERROR]', assistantCountError);
+    }
+
+    try {
+      const topIntents = await sql`
+        SELECT intent, COUNT(*)::int AS count
+        FROM health_assistant_events
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+          AND intent IS NOT NULL
+          AND intent <> ''
+        GROUP BY intent
+        ORDER BY count DESC
+        LIMIT 5
+      `;
+      assistantTopIntents = topIntents.map((row: any) => ({
+        intent: row.intent,
+        count: row.count,
+      }));
+    } catch (assistantIntentError) {
+      console.error('[ADMIN ASSISTANT INTENT ERROR]', assistantIntentError);
+    }
+
+    try {
+      assistantEvents = await sql`
+        SELECT
+          id, trace_id, intent, severity, safety_flags, response_source, model, confidence,
+          confidence_reason, latency_ms, status, error, created_at
+        FROM health_assistant_events
+        ORDER BY created_at DESC
+        LIMIT 40
+      `;
+    } catch (assistantEventsError) {
+      console.error('[ADMIN ASSISTANT EVENTS ERROR]', assistantEventsError);
+    }
+
     const totalUsers = users.length;
     const verifiedUsers = users.filter((u: any) => u.is_verified).length;
     const totalOrders = orders.length;
@@ -235,7 +293,13 @@ export async function GET(req: NextRequest) {
         activeAutomationWorkflows,
         automationRuns24h,
         urgentAutomationRuns24h,
+        assistantTotalChats,
+        assistantFallbackRate,
+        assistantEscalationRate,
+        assistantAvgLatencyMs,
+        assistantTopIntents,
       },
+      assistantEvents,
       reconciliation: {
         confirmedWithoutPayment,
         orphanPayments,

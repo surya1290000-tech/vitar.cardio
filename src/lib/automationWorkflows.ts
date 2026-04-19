@@ -2,9 +2,10 @@ import { sql } from '@/lib/db';
 
 type WorkflowModule = 'support' | 'health' | 'assistant';
 type WorkflowSeverity = 'normal' | 'high' | 'urgent' | 'critical';
+type RuntimeTemplateKey = 'support_ticket_triage' | 'health_reading_guardian' | 'assistant_urgent_triage';
 
 interface WorkflowDefinition {
-  key: string;
+  key: RuntimeTemplateKey;
   name: string;
   description: string;
   module: WorkflowModule;
@@ -25,6 +26,21 @@ interface WorkflowRow {
   config: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+}
+
+interface RunnableWorkflow {
+  id: string;
+  workflowKey: string;
+  name: string;
+  description: string;
+  module: WorkflowModule;
+  triggerEvent: string;
+  automationType: string;
+  isEnabled: boolean;
+  runtimeTemplate: RuntimeTemplateKey;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AutomationWorkflowView {
@@ -64,6 +80,14 @@ export interface SupportAutomationDraft {
   summary: string;
   severity: string;
   createdAt: string;
+}
+
+export interface WorkflowSimulationResult {
+  templateKey: RuntimeTemplateKey;
+  templateName: string;
+  summary: string;
+  severity: WorkflowSeverity | 'normal';
+  result: Record<string, unknown>;
 }
 
 const WORKFLOW_DEFINITIONS: WorkflowDefinition[] = [
@@ -109,12 +133,33 @@ const WORKFLOW_DEFINITIONS: WorkflowDefinition[] = [
   },
 ];
 
+const RUNTIME_TEMPLATE_KEYS = WORKFLOW_DEFINITIONS.map((workflow) => workflow.key) as RuntimeTemplateKey[];
+
 function isMissingRelationError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === '42P01';
 }
 
+function isRuntimeTemplateKey(value: unknown): value is RuntimeTemplateKey {
+  return typeof value === 'string' && RUNTIME_TEMPLATE_KEYS.includes(value as RuntimeTemplateKey);
+}
+
+function getRuntimeTemplateKey(row: { workflow_key: string; config?: Record<string, unknown> | null }): RuntimeTemplateKey | null {
+  if (isRuntimeTemplateKey(row.workflow_key)) {
+    return row.workflow_key;
+  }
+
+  const runtimeTemplate = row.config && typeof row.config === 'object' ? row.config.runtimeTemplate : null;
+  return isRuntimeTemplateKey(runtimeTemplate) ? runtimeTemplate : null;
+}
+
+function getWorkflowDefinition(key: RuntimeTemplateKey | null) {
+  return key ? WORKFLOW_DEFINITIONS.find((item) => item.key === key) ?? null : null;
+}
+
 function normalizeWorkflowRow(row: WorkflowRow): AutomationWorkflowView {
-  const definition = WORKFLOW_DEFINITIONS.find((item) => item.key === row.workflow_key);
+  const runtimeTemplate = getRuntimeTemplateKey(row);
+  const definition = getWorkflowDefinition(runtimeTemplate);
+
   return {
     id: row.id,
     workflowKey: row.workflow_key,
@@ -131,6 +176,40 @@ function normalizeWorkflowRow(row: WorkflowRow): AutomationWorkflowView {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function normalizeRunnableWorkflow(row: WorkflowRow): RunnableWorkflow | null {
+  const runtimeTemplate = getRuntimeTemplateKey(row);
+  const definition = getWorkflowDefinition(runtimeTemplate);
+  if (!runtimeTemplate || !definition) return null;
+
+  return {
+    id: row.id,
+    workflowKey: row.workflow_key,
+    name: row.name,
+    description: row.description,
+    module: row.module,
+    triggerEvent: row.trigger_event,
+    automationType: row.automation_type,
+    isEnabled: row.is_enabled,
+    runtimeTemplate,
+    config: {
+      ...definition.defaultConfig,
+      ...((row.config as Record<string, unknown> | null) ?? {}),
+    },
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getRuntimeTemplateOptions() {
+  return WORKFLOW_DEFINITIONS.map((workflow) => ({
+    key: workflow.key,
+    module: workflow.module,
+    name: workflow.name,
+    triggerEvent: workflow.triggerEvent,
+    description: workflow.description,
+  }));
 }
 
 export async function ensureWorkflowRegistry() {
@@ -189,6 +268,29 @@ async function getWorkflowRow(key: string): Promise<WorkflowRow | null> {
   `;
 
   return (rows[0] as WorkflowRow | undefined) ?? null;
+}
+
+async function getRunnableWorkflows(triggerEvent: string, runtimeTemplate: RuntimeTemplateKey): Promise<RunnableWorkflow[]> {
+  const ready = await ensureWorkflowRegistry();
+  if (!ready) return [];
+
+  const rows = await sql`
+    SELECT *
+    FROM ai_workflows
+    WHERE trigger_event = ${triggerEvent}
+      AND is_enabled = true
+      AND (
+        workflow_key = ${runtimeTemplate}
+        OR config->>'runtimeTemplate' = ${runtimeTemplate}
+      )
+    ORDER BY
+      CASE WHEN workflow_key = ${runtimeTemplate} THEN 0 ELSE 1 END ASC,
+      created_at ASC
+  `;
+
+  return (rows as WorkflowRow[])
+    .map((row) => normalizeRunnableWorkflow(row))
+    .filter((row): row is RunnableWorkflow => !!row);
 }
 
 async function insertAutomationLog(input: {
@@ -310,6 +412,47 @@ function deriveSupportInsights(subject: string, description: string) {
   };
 }
 
+function evaluateHealthReading(input: {
+  heartRate: number | null;
+  spo2: number | null;
+  temperature: number | null;
+  systolicBP: number | null;
+  diastolicBP: number | null;
+  aiRiskScore: number | null;
+  criticalThreshold: number;
+  highThreshold: number;
+}) {
+  const aiRiskScore = input.aiRiskScore ?? 0;
+  let severity: WorkflowSeverity = 'normal';
+  const triggers: string[] = [];
+
+  if (input.spo2 != null && input.spo2 < 90) {
+    severity = 'critical';
+    triggers.push(`SpO2 dropped to ${input.spo2}%`);
+  }
+  if (input.heartRate != null && (input.heartRate > 120 || input.heartRate < 40)) {
+    severity = severity === 'critical' ? 'critical' : 'high';
+    triggers.push(`Heart rate moved to ${input.heartRate} bpm`);
+  }
+  if (input.systolicBP != null && input.systolicBP > 180) {
+    severity = 'critical';
+    triggers.push(`Systolic BP reached ${input.systolicBP} mmHg`);
+  }
+  if (aiRiskScore >= input.criticalThreshold) {
+    severity = 'critical';
+    triggers.push(`AI risk score rose to ${(aiRiskScore * 100).toFixed(1)}%`);
+  } else if (aiRiskScore >= input.highThreshold && severity === 'normal') {
+    severity = 'high';
+    triggers.push(`AI risk score rose to ${(aiRiskScore * 100).toFixed(1)}%`);
+  }
+  if (input.temperature != null && (input.temperature > 38.5 || input.temperature < 35)) {
+    severity = severity === 'critical' ? 'critical' : 'high';
+    triggers.push(`Temperature measured ${input.temperature}C`);
+  }
+
+  return { severity, triggers };
+}
+
 export async function runSupportTicketAutomation(input: {
   ticketId: string;
   userId: string;
@@ -319,67 +462,85 @@ export async function runSupportTicketAutomation(input: {
   priority: string;
 }) {
   try {
-    const workflow = await getWorkflowRow('support_ticket_triage');
-    if (!workflow || !workflow.is_enabled) return null;
-
-    const config = {
-      autoUpgradePriority: true,
-      autoCategorizeGeneral: true,
-      generateDraftReply: true,
-      ...((workflow.config as Record<string, unknown> | null) ?? {}),
-    };
+    const workflows = await getRunnableWorkflows('support.ticket.created', 'support_ticket_triage');
+    if (workflows.length === 0) return null;
 
     const insights = deriveSupportInsights(input.subject, input.description);
-    const updates: { category?: string; priority?: string } = {};
+    let currentCategory = input.category;
+    let currentPriority = input.priority;
+    const runs: Array<Record<string, unknown>> = [];
 
-    if (config.autoCategorizeGeneral && input.category === 'general' && insights.suggestedCategory !== 'general') {
-      updates.category = insights.suggestedCategory;
+    for (const workflow of workflows) {
+      const config = {
+        autoUpgradePriority: true,
+        autoCategorizeGeneral: true,
+        generateDraftReply: true,
+        ...(workflow.config ?? {}),
+      };
+
+      const updates: { category?: string; priority?: string } = {};
+
+      if (config.autoCategorizeGeneral && currentCategory === 'general' && insights.suggestedCategory !== 'general') {
+        updates.category = insights.suggestedCategory;
+      }
+      if (config.autoUpgradePriority && priorityRank(insights.suggestedPriority) > priorityRank(currentPriority)) {
+        updates.priority = insights.suggestedPriority;
+      }
+
+      if (updates.category || updates.priority) {
+        await sql`
+          UPDATE support_tickets
+          SET
+            category = COALESCE(${updates.category ?? null}, category),
+            priority = COALESCE(${updates.priority ?? null}, priority),
+            updated_at = NOW()
+          WHERE id = ${input.ticketId}
+        `;
+        currentCategory = updates.category ?? currentCategory;
+        currentPriority = updates.priority ?? currentPriority;
+      }
+
+      const summary = [
+        `Workflow ${workflow.name} suggested category: ${currentCategory}.`,
+        `Workflow ${workflow.name} suggested priority: ${currentPriority}.`,
+        insights.hasUrgentLanguage ? 'Urgent symptom language detected.' : 'No emergency symptom language detected.',
+      ].join(' ');
+
+      const payload = {
+        runtimeTemplate: workflow.runtimeTemplate,
+        originalCategory: input.category,
+        originalPriority: input.priority,
+        suggestedCategory: currentCategory,
+        suggestedPriority: currentPriority,
+        draftReply: config.generateDraftReply ? insights.draftReply : null,
+      };
+
+      await insertAutomationLog({
+        workflowId: workflow.id,
+        workflowKey: workflow.workflowKey,
+        entityType: 'support_ticket',
+        entityId: input.ticketId,
+        userId: input.userId,
+        severity: insights.hasUrgentLanguage ? 'urgent' : (currentPriority as WorkflowSeverity),
+        title: `${workflow.name} triaged support ticket`,
+        summary,
+        payload,
+      });
+
+      runs.push({
+        workflowKey: workflow.workflowKey,
+        name: workflow.name,
+        suggestedCategory: currentCategory,
+        suggestedPriority: currentPriority,
+        draftReply: config.generateDraftReply ? insights.draftReply : null,
+      });
     }
-    if (
-      config.autoUpgradePriority &&
-      priorityRank(insights.suggestedPriority) > priorityRank(input.priority)
-    ) {
-      updates.priority = insights.suggestedPriority;
-    }
 
-    if (updates.category || updates.priority) {
-      await sql`
-        UPDATE support_tickets
-        SET
-          category = COALESCE(${updates.category ?? null}, category),
-          priority = COALESCE(${updates.priority ?? null}, priority),
-          updated_at = NOW()
-        WHERE id = ${input.ticketId}
-      `;
-    }
-
-    const summary = [
-      `Suggested category: ${updates.category ?? input.category}.`,
-      `Suggested priority: ${updates.priority ?? input.priority}.`,
-      insights.hasUrgentLanguage ? 'Urgent symptom language detected.' : 'No emergency symptom language detected.',
-    ].join(' ');
-
-    const payload = {
-      originalCategory: input.category,
-      originalPriority: input.priority,
-      suggestedCategory: updates.category ?? input.category,
-      suggestedPriority: updates.priority ?? input.priority,
-      draftReply: config.generateDraftReply ? insights.draftReply : null,
+    return {
+      finalCategory: currentCategory,
+      finalPriority: currentPriority,
+      runs,
     };
-
-    await insertAutomationLog({
-      workflowId: workflow.id,
-      workflowKey: workflow.workflow_key,
-      entityType: 'support_ticket',
-      entityId: input.ticketId,
-      userId: input.userId,
-      severity: insights.hasUrgentLanguage ? 'urgent' : (payload.suggestedPriority as WorkflowSeverity),
-      title: 'AI triaged support ticket',
-      summary,
-      payload,
-    });
-
-    return payload;
   } catch (error) {
     console.error('[SUPPORT AUTOMATION ERROR]', error);
     return null;
@@ -398,85 +559,110 @@ export async function runHealthReadingAutomation(input: {
   aiRiskScore: number | null;
 }) {
   try {
-    const workflow = await getWorkflowRow('health_reading_guardian');
-    if (!workflow || !workflow.is_enabled) return null;
+    const workflows = await getRunnableWorkflows('health.reading.recorded', 'health_reading_guardian');
+    if (workflows.length === 0) return null;
 
-    const config = {
-      criticalRiskThreshold: 0.75,
-      highRiskThreshold: 0.5,
-      logNormalReadings: false,
-      ...((workflow.config as Record<string, unknown> | null) ?? {}),
-    };
+    const runs: Array<Record<string, unknown>> = [];
+    let highestSeverity: WorkflowSeverity = 'normal';
+    let combinedTriggers: string[] = [];
 
-    const aiRiskScore = input.aiRiskScore ?? 0;
-    const criticalThreshold = Number(config.criticalRiskThreshold ?? 0.75);
-    const highThreshold = Number(config.highRiskThreshold ?? 0.5);
-
-    let severity: WorkflowSeverity = 'normal';
-    const triggers: string[] = [];
-
-    if (input.spo2 != null && input.spo2 < 90) {
-      severity = 'critical';
-      triggers.push(`SpO2 dropped to ${input.spo2}%`);
-    }
-    if (input.heartRate != null && (input.heartRate > 120 || input.heartRate < 40)) {
-      severity = severity === 'critical' ? 'critical' : 'high';
-      triggers.push(`Heart rate moved to ${input.heartRate} bpm`);
-    }
-    if (input.systolicBP != null && input.systolicBP > 180) {
-      severity = 'critical';
-      triggers.push(`Systolic BP reached ${input.systolicBP} mmHg`);
-    }
-    if (aiRiskScore >= criticalThreshold) {
-      severity = 'critical';
-      triggers.push(`AI risk score rose to ${(aiRiskScore * 100).toFixed(1)}%`);
-    } else if (aiRiskScore >= highThreshold && severity === 'normal') {
-      severity = 'high';
-      triggers.push(`AI risk score rose to ${(aiRiskScore * 100).toFixed(1)}%`);
-    }
-    if (input.temperature != null && (input.temperature > 38.5 || input.temperature < 35)) {
-      severity = severity === 'critical' ? 'critical' : 'high';
-      triggers.push(`Temperature measured ${input.temperature}°C`);
-    }
-
-    if (!triggers.length && !config.logNormalReadings) {
-      return {
-        severity,
-        triggers: [],
+    for (const workflow of workflows) {
+      const config = {
+        criticalRiskThreshold: 0.75,
+        highRiskThreshold: 0.5,
+        logNormalReadings: false,
+        ...(workflow.config ?? {}),
       };
+
+      const aiRiskScore = input.aiRiskScore ?? 0;
+      const criticalThreshold = Number(config.criticalRiskThreshold ?? 0.75);
+      const highThreshold = Number(config.highRiskThreshold ?? 0.5);
+
+      let severity: WorkflowSeverity = 'normal';
+      const triggers: string[] = [];
+
+      if (input.spo2 != null && input.spo2 < 90) {
+        severity = 'critical';
+        triggers.push(`SpO2 dropped to ${input.spo2}%`);
+      }
+      if (input.heartRate != null && (input.heartRate > 120 || input.heartRate < 40)) {
+        severity = severity === 'critical' ? 'critical' : 'high';
+        triggers.push(`Heart rate moved to ${input.heartRate} bpm`);
+      }
+      if (input.systolicBP != null && input.systolicBP > 180) {
+        severity = 'critical';
+        triggers.push(`Systolic BP reached ${input.systolicBP} mmHg`);
+      }
+      if (aiRiskScore >= criticalThreshold) {
+        severity = 'critical';
+        triggers.push(`AI risk score rose to ${(aiRiskScore * 100).toFixed(1)}%`);
+      } else if (aiRiskScore >= highThreshold && severity === 'normal') {
+        severity = 'high';
+        triggers.push(`AI risk score rose to ${(aiRiskScore * 100).toFixed(1)}%`);
+      }
+      if (input.temperature != null && (input.temperature > 38.5 || input.temperature < 35)) {
+        severity = severity === 'critical' ? 'critical' : 'high';
+        triggers.push(`Temperature measured ${input.temperature}C`);
+      }
+
+      if (!triggers.length && !config.logNormalReadings) {
+        runs.push({
+          workflowKey: workflow.workflowKey,
+          name: workflow.name,
+          severity,
+          triggers: [],
+        });
+        continue;
+      }
+
+      const summary =
+        triggers.length > 0
+          ? `${workflow.name} reviewed this reading and flagged: ${triggers.join('; ')}.`
+          : `${workflow.name} reviewed this reading and found it within the normal operating window.`;
+
+      const payload = {
+        runtimeTemplate: workflow.runtimeTemplate,
+        deviceId: input.deviceId,
+        triggers,
+        heartRate: input.heartRate,
+        spo2: input.spo2,
+        temperature: input.temperature,
+        systolicBP: input.systolicBP,
+        diastolicBP: input.diastolicBP,
+        aiRiskScore: input.aiRiskScore,
+      };
+
+      await insertAutomationLog({
+        workflowId: workflow.id,
+        workflowKey: workflow.workflowKey,
+        entityType: 'health_reading',
+        entityId: String(input.readingId),
+        userId: input.userId,
+        severity,
+        title:
+          severity === 'normal'
+            ? `${workflow.name} reviewed health reading`
+            : `${workflow.name} flagged elevated health reading`,
+        summary,
+        payload,
+      });
+
+      if (severity === 'critical' || (severity === 'high' && highestSeverity === 'normal')) {
+        highestSeverity = severity;
+      }
+      combinedTriggers = [...combinedTriggers, ...triggers];
+      runs.push({
+        workflowKey: workflow.workflowKey,
+        name: workflow.name,
+        severity,
+        triggers,
+      });
     }
-
-    const summary =
-      triggers.length > 0
-        ? `Guardian reviewed this reading and flagged: ${triggers.join('; ')}.`
-        : 'Guardian reviewed this reading and found it within the normal operating window.';
-
-    const payload = {
-      deviceId: input.deviceId,
-      triggers,
-      heartRate: input.heartRate,
-      spo2: input.spo2,
-      temperature: input.temperature,
-      systolicBP: input.systolicBP,
-      diastolicBP: input.diastolicBP,
-      aiRiskScore: input.aiRiskScore,
-    };
-
-    await insertAutomationLog({
-      workflowId: workflow.id,
-      workflowKey: workflow.workflow_key,
-      entityType: 'health_reading',
-      entityId: String(input.readingId),
-      userId: input.userId,
-      severity,
-      title: severity === 'normal' ? 'Guardian reviewed health reading' : 'Guardian flagged elevated health reading',
-      summary,
-      payload,
-    });
 
     return {
-      severity,
-      triggers,
+      severity: highestSeverity,
+      triggers: Array.from(new Set(combinedTriggers)),
+      runs,
     };
   } catch (error) {
     console.error('[HEALTH AUTOMATION ERROR]', error);
@@ -489,34 +675,56 @@ export async function runAssistantUrgentTriage(input: {
   userMessage: string;
   assistantReply: string;
   assistantSeverity: string;
+  assistantMode?: string;
+  escalationSummary?: string;
+  nextSteps?: string[];
 }) {
   try {
-    const workflow = await getWorkflowRow('assistant_urgent_triage');
-    if (!workflow || !workflow.is_enabled) return null;
+    const workflows = await getRunnableWorkflows('assistant.message.created', 'assistant_urgent_triage');
+    if (workflows.length === 0) return null;
 
     const isUrgent = ['urgent', 'high', 'critical'].includes(input.assistantSeverity);
     if (!isUrgent) return null;
 
-    const summary = `Assistant triage flagged a ${input.assistantSeverity} conversation and logged it for admin follow-up.`;
-    const payload = {
-      userMessage: input.userMessage,
-      assistantReply: input.assistantReply,
-      assistantSeverity: input.assistantSeverity,
+    const runs: Array<Record<string, unknown>> = [];
+
+    for (const workflow of workflows) {
+      const summary = input.escalationSummary
+        ? `${workflow.name} flagged a ${input.assistantSeverity} conversation. ${input.escalationSummary}`
+        : `${workflow.name} flagged a ${input.assistantSeverity} conversation and logged it for admin follow-up.`;
+      const payload = {
+        runtimeTemplate: workflow.runtimeTemplate,
+        userMessage: input.userMessage,
+        assistantReply: input.assistantReply,
+        assistantSeverity: input.assistantSeverity,
+        assistantMode: input.assistantMode ?? 'assistant_urgent_triage',
+        escalationSummary: input.escalationSummary ?? null,
+        nextSteps: input.nextSteps ?? [],
+      };
+
+      await insertAutomationLog({
+        workflowId: workflow.id,
+        workflowKey: workflow.workflowKey,
+        entityType: 'assistant_message',
+        entityId: `assistant-${Date.now()}-${workflow.workflowKey}`,
+        userId: input.userId,
+        severity: input.assistantSeverity as WorkflowSeverity,
+        title: `${workflow.name} escalated conversation`,
+        summary,
+        payload,
+      });
+
+      runs.push({
+        workflowKey: workflow.workflowKey,
+        name: workflow.name,
+        severity: input.assistantSeverity,
+      });
+    }
+
+    return {
+      severity: input.assistantSeverity,
+      runs,
     };
-
-    await insertAutomationLog({
-      workflowId: workflow.id,
-      workflowKey: workflow.workflow_key,
-      entityType: 'assistant_message',
-      entityId: `assistant-${Date.now()}`,
-      userId: input.userId,
-      severity: input.assistantSeverity as WorkflowSeverity,
-      title: 'Assistant escalated conversation',
-      summary,
-      payload,
-    });
-
-    return payload;
   } catch (error) {
     console.error('[ASSISTANT AUTOMATION ERROR]', error);
     return null;
@@ -591,6 +799,95 @@ export async function getAutomationAdminSnapshot() {
   };
 }
 
+export async function simulateWorkflowTemplate(input: {
+  templateKey: RuntimeTemplateKey;
+  payload: Record<string, unknown>;
+}): Promise<WorkflowSimulationResult> {
+  const definition = getWorkflowDefinition(input.templateKey);
+  if (!definition) {
+    throw new Error('Unknown workflow template.');
+  }
+
+  if (input.templateKey === 'support_ticket_triage') {
+    const subject = typeof input.payload.subject === 'string' ? input.payload.subject : 'Test support ticket';
+    const description =
+      typeof input.payload.description === 'string'
+        ? input.payload.description
+        : 'The device is not working and the user needs help.';
+    const category = typeof input.payload.category === 'string' ? input.payload.category : 'general';
+    const priority = typeof input.payload.priority === 'string' ? input.payload.priority : 'normal';
+    const insights = deriveSupportInsights(subject, description);
+    const nextCategory = category === 'general' && insights.suggestedCategory !== 'general' ? insights.suggestedCategory : category;
+    const nextPriority =
+      priorityRank(insights.suggestedPriority) > priorityRank(priority) ? insights.suggestedPriority : priority;
+
+    return {
+      templateKey: input.templateKey,
+      templateName: definition.name,
+      summary: `Support triage would classify this ticket as ${nextCategory} and ${nextPriority} priority.`,
+      severity: insights.hasUrgentLanguage ? 'urgent' : (nextPriority as WorkflowSeverity),
+      result: {
+        originalCategory: category,
+        originalPriority: priority,
+        suggestedCategory: nextCategory,
+        suggestedPriority: nextPriority,
+        draftReply: insights.draftReply,
+        urgentLanguageDetected: insights.hasUrgentLanguage,
+      },
+    };
+  }
+
+  if (input.templateKey === 'health_reading_guardian') {
+    const evaluation = evaluateHealthReading({
+      heartRate: typeof input.payload.heartRate === 'number' ? input.payload.heartRate : null,
+      spo2: typeof input.payload.spo2 === 'number' ? input.payload.spo2 : null,
+      temperature: typeof input.payload.temperature === 'number' ? input.payload.temperature : null,
+      systolicBP: typeof input.payload.systolicBP === 'number' ? input.payload.systolicBP : null,
+      diastolicBP: typeof input.payload.diastolicBP === 'number' ? input.payload.diastolicBP : null,
+      aiRiskScore: typeof input.payload.aiRiskScore === 'number' ? input.payload.aiRiskScore : null,
+      criticalThreshold: Number(input.payload.criticalRiskThreshold ?? 0.75),
+      highThreshold: Number(input.payload.highRiskThreshold ?? 0.5),
+    });
+
+    return {
+      templateKey: input.templateKey,
+      templateName: definition.name,
+      summary:
+        evaluation.triggers.length > 0
+          ? `Health guardian would flag this reading with ${evaluation.severity} severity.`
+          : 'Health guardian would treat this reading as normal.',
+      severity: evaluation.severity,
+      result: {
+        triggers: evaluation.triggers,
+        severity: evaluation.severity,
+      },
+    };
+  }
+
+  const assistantSeverity =
+    typeof input.payload.assistantSeverity === 'string'
+      ? input.payload.assistantSeverity
+      : typeof input.payload.message === 'string' &&
+          /(chest pain|fainted|unconscious|can't breathe|cant breathe|shortness of breath)/i.test(input.payload.message)
+        ? 'urgent'
+        : 'normal';
+  const urgent = ['urgent', 'high', 'critical'].includes(assistantSeverity);
+
+  return {
+    templateKey: input.templateKey,
+    templateName: definition.name,
+    summary: urgent
+      ? `Assistant urgent triage would escalate this conversation as ${assistantSeverity}.`
+      : 'Assistant urgent triage would keep this conversation as normal.',
+    severity: urgent ? (assistantSeverity as WorkflowSeverity) : 'normal',
+    result: {
+      assistantSeverity,
+      wouldEscalate: urgent,
+      userMessage: typeof input.payload.message === 'string' ? input.payload.message : null,
+    },
+  };
+}
+
 export async function updateWorkflowEnabledState(workflowKey: string, isEnabled: boolean) {
   const ready = await ensureWorkflowRegistry();
   if (!ready) {
@@ -645,12 +942,18 @@ export async function createWorkflowDraft(input: {
   module: WorkflowModule;
   triggerEvent: string;
   automationType?: string;
+  templateKey?: RuntimeTemplateKey | null;
   config?: Record<string, unknown>;
 }) {
   const ready = await ensureWorkflowRegistry();
   if (!ready) {
     return null;
   }
+
+  const nextConfig = {
+    ...(input.config ?? {}),
+    ...(input.templateKey ? { runtimeTemplate: input.templateKey } : {}),
+  };
 
   const inserted = await sql`
     INSERT INTO ai_workflows (
@@ -669,9 +972,9 @@ export async function createWorkflowDraft(input: {
       ${input.description},
       ${input.module},
       ${input.triggerEvent},
-      ${input.automationType ?? 'workflow_builder'},
+      ${input.automationType ?? (input.templateKey ? 'workflow_template' : 'workflow_builder')},
       false,
-      ${JSON.stringify(input.config ?? {})}::jsonb,
+      ${JSON.stringify(nextConfig)}::jsonb,
       NOW()
     )
     RETURNING *
@@ -689,9 +992,9 @@ export async function getSupportTicketAutomationDraft(ticketId: string): Promise
     const rows = await sql`
       SELECT summary, severity, payload, created_at
       FROM automation_logs
-      WHERE workflow_key = 'support_ticket_triage'
-        AND entity_type = 'support_ticket'
+      WHERE entity_type = 'support_ticket'
         AND entity_id = ${ticketId}
+        AND payload ? 'draftReply'
       ORDER BY created_at DESC
       LIMIT 1
     `;
